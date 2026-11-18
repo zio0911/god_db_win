@@ -35,6 +35,14 @@ public sealed class MySqlDriver : IDbDriver
             };
             var conn = new MySqlConnection(b.ConnectionString);
             try { await conn.OpenAsync(ct); }
+            catch (MySqlException me) when (me.ErrorCode == MySqlErrorCode.UnableToConnectToHost)
+            {
+                await conn.DisposeAsync();
+                // MySqlConnector 는 소켓 오류(거부 · 시간 초과 · 경로 없음)를 1042 하나로 감싼다.
+                // Mac 처럼 원인별 안내를 보여주려고 같은 주소로 직접 연결해 실제 소켓 오류를 알아낸다.
+                await DriverUtil.ProbeAsync(ip, e.Port, e.ConnectTimeoutSeconds, ct);
+                throw;
+            }
             catch { await conn.DisposeAsync(); throw; }
             return new MySqlDriver(conn);
         }, ct);

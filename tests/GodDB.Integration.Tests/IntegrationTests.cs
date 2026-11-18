@@ -100,21 +100,25 @@ public class IntegrationTests
         Assert.Equal("1", (await s.RawAsync("SELECT 1")).Rows.FirstOrDefault()?[0]);
     }
 
-    /// Mac 은 ErrorText.describe 의 한국어 안내("거부" + hint) 도 확인한다 — ErrorText 미포팅이라 연결 실패만 확인
     [Fact]
     public async Task RefusedPortGivesKoreanHint()
     {
         var p = It.MySql() with { Port = 1 };
-        await Assert.ThrowsAnyAsync<Exception>(() => DbSession.ConnectAsync(p, It.MySqlPassword));
+        var e = await Assert.ThrowsAnyAsync<Exception>(() => DbSession.ConnectAsync(p, It.MySqlPassword));
+        var d = GodDB.Core.Audit.ErrorText.Describe(e);
+        Assert.True(d.Message.Contains("거부"), $"{d.Message} / {d.Raw}");
+        Assert.NotNull(d.Hint);
     }
 
-    /// Mac 은 ErrorText.describe 의 메시지(1045) · hint("비밀번호") 도 확인한다 — ErrorText 미포팅이라 드라이버 오류 번호만 확인
     [Fact]
     public async Task WrongPasswordGivesHint()
     {
         var e = await Assert.ThrowsAnyAsync<Exception>(() => DbSession.ConnectAsync(It.MySql(), "wrong"));
-        var my = Assert.IsType<MySqlConnector.MySqlException>(e);
-        Assert.Equal(1045, my.Number);
+        Assert.Equal(1045, Assert.IsType<MySqlConnector.MySqlException>(e).Number);
+        var d = GodDB.Core.Audit.ErrorText.Describe(e);
+        Assert.True(d.Message.Contains("1045"), d.Message);
+        Assert.Contains("비밀번호", d.Hint ?? "");
+        Assert.True(GodDB.Core.Audit.ErrorText.IsAuthFailure(e));
     }
 
     [Fact]

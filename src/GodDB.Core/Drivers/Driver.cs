@@ -115,6 +115,16 @@ internal static class DriverUtil
         catch (SocketException) { return [host]; }
     }
 
+    /// TCP 로 직접 연결해 보고, 실패하면 그 SocketException 을 던진다 (성공하면 아무것도 하지 않음)
+    public static async Task ProbeAsync(string ip, int port, int timeoutSeconds, CancellationToken ct)
+    {
+        using var client = new TcpClient();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, timeoutSeconds)));
+        try { await client.ConnectAsync(ip, port, cts.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new SocketException((int)SocketError.TimedOut); }
+    }
+
     public static bool IsIPAddress(string host) => IPAddress.TryParse(host, out _);
 
     /// 소켓 연결 단계 오류인지 (다음 주소로 넘어가도 되는지)
