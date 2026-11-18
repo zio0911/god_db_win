@@ -1,6 +1,6 @@
 # GodDB 기능 명세 (Windows)
 
-> GodDB for Windows 1.3.7 (macOS 판 1.3.7 과 같은 기능) · 대상 DB: MySQL 5.7 / 8.x (AWS RDS 포함), PostgreSQL 12+, SQL Server 2016+, Redis 6+
+> GodDB for Windows 1.3.7.1 (macOS 판 1.3.7 과 같은 기능 + Windows 판 수정) · 대상 DB: MySQL 5.7 / 8.x (AWS RDS 포함), PostgreSQL 12+, SQL Server 2016+, Redis 6+
 > 운영체제: Windows 10 1809 이상 / Windows 11, x64. .NET 은 앱에 들어 있어 따로 설치하지 않아도 된다.
 > macOS 판 GodDB 와 같은 기능을 Windows 에 맞게 옮긴 앱이다. 이 문서는 앱 안의 AI 어시스턴트(사용법 질문)와 **새로운 기능** 창이 읽고, 기능이 추가·변경될 때마다 함께 갱신한다.
 
@@ -675,6 +675,12 @@
 - 화면 자동 테스트는 화면 없이(headless) 도는 앱 상태 · 창 테스트만 있다. 실제 화면을 눌러 보는 자동 테스트는 없어서 화면 흐름은 수동으로 확인한다.
 
 ## 18. 변경 이력
+
+### 1.3.7.1
+- Windows 판 수정 (기능은 macOS 판 1.3.7 과 같음). 네 번째 자리는 Windows 판만의 수정판 번호
+- 쿼리 편집기에서 Tab 으로 자동완성 목록이 뜰 때 오류가 나던 문제. 이제 첫 후보가 고른 채로 뜨고 ↑↓ · Enter 로 넣는다
+- 설정에서 언어를 바꾸면 Redis 화면 등 일부 문장이 이전 언어로 남던 문제 (화면 전체를 새 언어로 다시 그림)
+- English 화면에서 Redis 자동 새로고침 'Seconds' 가 잘리던 문제
 
 ### 1.3.7
 - Windows 판 첫 릴리스: macOS 판 1.3.7 과 같은 기능 + **SQL Server Windows 통합 인증** (버전 번호는 macOS 판과 맞춘다 — 같은 번호면 같은 기능)
