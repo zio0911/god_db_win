@@ -33,7 +33,7 @@ macOS 판 [GodDB](https://github.com/zio0911/god_db) 와 같은 기능을 C# / .
 ./scripts/test-dbs.sh up          # Docker 테스트 DB (MySQL · PostgreSQL · SQL Server · Redis)
 ./scripts/test-dbs.sh test        # 통합 테스트 포함
 dotnet run --project src/GodDB.App -f net10.0   # Mac / Linux 에서 화면 확인 (Windows 전용 기능은 대체 구현)
-./scripts/release-notes.sh 1.0.0  # docs/FEATURES.md 변경 이력으로 릴리스 노트 만들기
+./scripts/release-notes.sh 1.3.7  # docs/FEATURES.md 변경 이력으로 릴리스 노트 만들기
 ```
 
 개발 계획과 포팅 규칙은 [docs/PLAN.md](docs/PLAN.md), [docs/PORTING.md](docs/PORTING.md).

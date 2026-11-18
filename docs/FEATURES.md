@@ -1,6 +1,6 @@
 # GodDB 기능 명세 (Windows)
 
-> GodDB for Windows 1.0.0 · 대상 DB: MySQL 5.7 / 8.x (AWS RDS 포함), PostgreSQL 12+, SQL Server 2016+, Redis 6+
+> GodDB for Windows 1.3.7 (macOS 판 1.3.7 과 같은 기능) · 대상 DB: MySQL 5.7 / 8.x (AWS RDS 포함), PostgreSQL 12+, SQL Server 2016+, Redis 6+
 > 운영체제: Windows 10 1809 이상 / Windows 11, x64. .NET 은 앱에 들어 있어 따로 설치하지 않아도 된다.
 > macOS 판 GodDB 와 같은 기능을 Windows 에 맞게 옮긴 앱이다. 이 문서는 앱 안의 AI 어시스턴트(사용법 질문)와 **새로운 기능** 창이 읽고, 기능이 추가·변경될 때마다 함께 갱신한다.
 
@@ -669,8 +669,8 @@
 
 ## 18. 변경 이력
 
-### 1.0.0
-- Windows 판 첫 릴리스: macOS 판 1.3.5 와 같은 기능 + **SQL Server Windows 통합 인증**
+### 1.3.7
+- Windows 판 첫 릴리스: macOS 판 1.3.7 과 같은 기능 + **SQL Server Windows 통합 인증** (버전 번호는 macOS 판과 맞춘다 — 같은 번호면 같은 기능)
 - 비밀번호는 **Windows 자격 증명 관리자**에 저장, 저장된 비밀번호 보기는 **Windows Hello**(지문 · 얼굴 · PIN) 또는 Windows 로그인 암호로 확인
 - SSH 터널은 Windows 내장 OpenSSH(`ssh.exe`) 사용, SQL Server 명명된 인스턴스(`host\instance`) 접속
 - 감사 로그 기기 키는 TPM (없으면 DPAPI 로 잠근 키), 로그는 `%LOCALAPPDATA%\GodDB\Logs`
