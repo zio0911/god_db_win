@@ -15,7 +15,7 @@ using GodDB.Core.Schema;
 
 namespace GodDB.App.Tests;
 
-/// Mac 1.3.6 · 1.3.7 변경 (#94 좁은 창, #100 경계 크기 기억 · 커서 문장 실행 · 그룹 줄 선택, #102 로고 · 비교 접속 환경, #104 위험한 명령 확인 설정)
+/// Mac 1.3.6 · 1.3.7 변경 (#94 좁은 창, #100 경계 크기 기억 · 커서 문장 실행 · 그룹 줄 선택, #102 로고 · 비교 접속 환경, #108 SQL Server · PostgreSQL 아이콘, #104 위험한 명령 확인 설정)
 public class LayoutPersistenceTests
 {
     private static void Pump() => Dispatcher.UIThread.RunJobs();
@@ -227,24 +227,144 @@ public class QueryToolbarTests
 
 public class BrandLogoTests
 {
-    /// 모든 DB 종류에 로고가 있고 브랜드 색으로 칠한다 (Mac #101)
+    /// 모든 DB 종류에 로고가 있다: MySQL · Redis 는 브랜드 색 한 겹, PostgreSQL · SQL Server 는 여러 겹 그림 (Mac #101, #108)
     [Fact]
     public Task EveryKind_HasLogoInBrandColor() => UiThread.Run(() =>
     {
         var colors = new Dictionary<DatabaseKind, string>
         {
-            [DatabaseKind.Mysql] = "#FF4479A1", [DatabaseKind.Postgres] = "#FF4169E1",
-            [DatabaseKind.Mssql] = "#FFCC2927", [DatabaseKind.Redis] = "#FFFF4438",
+            [DatabaseKind.Mysql] = "#FF4479A1", [DatabaseKind.Postgres] = "#FF336791",
+            [DatabaseKind.Mssql] = "#FFFFB03B", [DatabaseKind.Redis] = "#FFFF4438",
         };
         foreach (var kind in Enum.GetValues<DatabaseKind>())
         {
             var badge = new KindBadge { Kind = kind };
-            Assert.NotNull(badge.Logo);
-            Assert.True(badge.Logo!.Bounds.Width > 1 && badge.Logo.Bounds.Height > 1, kind.ToString());
-            Assert.Equal(Color.Parse(colors[kind]), ((ISolidColorBrush)badge.LogoBrush!).Color);
+            Assert.Equal(Color.Parse(colors[kind]), KindBadge.ColorOf(kind));
+            if (kind is DatabaseKind.Mysql or DatabaseKind.Redis)
+            {
+                Assert.NotNull(badge.Logo);
+                Assert.True(badge.Logo!.Bounds.Width > 1 && badge.Logo.Bounds.Height > 1, kind.ToString());
+                Assert.Equal(Color.Parse(colors[kind]), ((ISolidColorBrush)badge.LogoBrush!).Color);
+            }
+            else
+            {
+                Assert.Null(badge.Logo);
+                Assert.NotNull(badge.Layers);
+                Assert.Equal(16, badge.Layers!.Width);
+            }
             Assert.Equal(kind.Title(), ToolTip.GetTip(badge));
             Assert.Equal(16, badge.Width);
         }
+    });
+
+    private static T Layer<T>(KindBadge b, string name) where T : Control =>
+        Assert.IsType<T>(b.Layers!.Children.Single(c => c.Name == name));
+
+    private static Color FillOf(Avalonia.Controls.Shapes.Shape s) => ((ISolidColorBrush)s.Fill!).Color;
+
+    /// PostgreSQL: 파랗게 채운 코끼리(바깥 윤곽) + 검은 테두리 + 흰 선 (Mac PostgresIcon, #108)
+    [Fact]
+    public Task Postgres_BlueFilledElephant_WhiteLines_BlackOutline() => UiThread.Run(() =>
+    {
+        foreach (var size in new[] { 16.0, 24.0 })
+        {
+            var badge = new KindBadge { Kind = DatabaseKind.Postgres, Size = size };
+            var names = badge.Layers!.Children.Select(c => c.Name).ToList();
+            Assert.Equal(["Fill", "Outline", "Lines"], names);   // 아래에서 위로 쌓는 순서
+            var fill = Layer<Avalonia.Controls.Shapes.Path>(badge, "Fill");
+            Assert.Equal(Color.Parse("#336791"), FillOf(fill));
+            var outline = Layer<Avalonia.Controls.Shapes.Path>(badge, "Outline");
+            Assert.Null(outline.Fill);
+            Assert.Equal(Colors.Black, ((ISolidColorBrush)outline.Stroke!).Color);
+            Assert.Equal(0.8, outline.StrokeThickness);
+            var lines = Layer<Avalonia.Controls.Shapes.Path>(badge, "Lines");
+            Assert.Equal(Colors.White, FillOf(lines));
+            Assert.Equal(FillRule.NonZero, ((PathGeometry)lines.Data!).FillRule);
+            // 세 겹 모두 같은 기준(전체 경로 범위)으로 size 칸에 맞춘다
+            var m = ((MatrixTransform)lines.Data.Transform!).Matrix;
+            Assert.Equal(m, ((MatrixTransform)fill.Data!.Transform!).Matrix);
+            Assert.Equal(m, ((MatrixTransform)outline.Data!.Transform!).Matrix);
+            var full = PathGeometry.Parse(BrandLogo.PostgreSql).Bounds;
+            Assert.Equal(size / Math.Max(full.Width, full.Height), m.M11, 6);
+        }
+    });
+
+    /// 코끼리 바깥 윤곽은 가장 큰 조각 하나 (Mac postgresSilhouette)
+    [Fact]
+    public Task Postgres_Silhouette_IsLargestFigure() => UiThread.Run(() =>
+    {
+        var full = PathGeometry.Parse(BrandLogo.PostgreSql);
+        var sil = BrandLogo.PostgresSilhouette;
+        var f = Assert.Single(sil.Figures!);
+        var area = (Rect r) => r.Width * r.Height;
+        var max = full.Figures!.Max(x => area(BrandLogo.PointBounds(x)));
+        Assert.Equal(max, area(BrandLogo.PointBounds(f)));
+        Assert.True(full.Figures!.Count > 1);
+        Assert.True(BrandLogo.PointBounds(f).Width > 20);   // 코끼리 전체 폭 (24 칸)
+    });
+
+    /// SQL Server: 주황 DB 원통 + 렌치 · 드라이버 (Mac MSSQLIcon 과 같은 비율 · 색, #108)
+    [Fact]
+    public Task Mssql_OrangeCylinder_WithWrenchAndScrewdriver() => UiThread.Run(() =>
+    {
+        foreach (var size in new[] { 16.0, 24.0 })
+        {
+            var badge = new KindBadge { Kind = DatabaseKind.Mssql, Size = size };
+            Assert.Equal(
+                ["CylinderBottom", "CylinderBody", "CylinderShine", "CylinderTop", "CylinderTopFace",
+                 "WrenchHalo", "ScrewdriverHalo", "Wrench", "Screwdriver"],
+                badge.Layers!.Children.Select(c => c.Name).ToList());
+            double w = size * 0.66, h = size * 0.78, cap = h * 0.3;
+            var orange = Color.FromRgb(255, 176, 59);
+
+            var bottom = Layer<Avalonia.Controls.Shapes.Ellipse>(badge, "CylinderBottom");
+            Assert.Equal((w, cap, h - cap), (bottom.Width, bottom.Height, Canvas.GetTop(bottom)));
+            Assert.Equal(orange, FillOf(bottom));
+            var body = Layer<Avalonia.Controls.Shapes.Rectangle>(badge, "CylinderBody");
+            Assert.Equal((w, h - cap, cap / 2), (body.Width, body.Height, Canvas.GetTop(body)));
+            Assert.Equal(orange, FillOf(body));
+            var shine = Layer<Avalonia.Controls.Shapes.Rectangle>(badge, "CylinderShine");
+            Assert.Equal(w * 0.16, shine.Width, 6);
+            Assert.Equal(w * 0.66, Canvas.GetLeft(shine), 6);
+            Assert.Equal(Color.FromRgb(255, 214, 140), FillOf(shine));
+            var top = Layer<Avalonia.Controls.Shapes.Ellipse>(badge, "CylinderTop");
+            Assert.Equal((w, cap, 0.0), (top.Width, top.Height, Canvas.GetTop(top)));
+            var face = Layer<Avalonia.Controls.Shapes.Ellipse>(badge, "CylinderTopFace");
+            Assert.Equal(w * 0.8, face.Width, 6);
+            Assert.Equal(cap * 0.62, face.Height, 6);
+            Assert.Equal(Color.FromRgb(214, 214, 219), FillOf(face));
+
+            // 도구: 흰 테두리 위에 짙은 회색, 원통 오른쪽 아래 (0.44 ~ 1.0 칸)
+            foreach (var n in new[] { "Wrench", "Screwdriver" })
+            {
+                var tool = Layer<Avalonia.Controls.Shapes.Path>(badge, n);
+                Assert.Equal(Color.FromRgb(61, 61, 66), FillOf(tool));
+                var halo = Layer<Avalonia.Controls.Shapes.Path>(badge, n + "Halo");
+                Assert.Equal(Colors.White, ((ISolidColorBrush)halo.Stroke!).Color);
+                var m = ((MatrixTransform)tool.Data!.Transform!).Matrix;
+                var c = new Point(12, 12).Transform(m);
+                Assert.Equal(size * 0.72, c.X, 6);
+                Assert.Equal(size * 0.72, c.Y, 6);
+            }
+            // 렌치 머리(왼쪽 끝)는 왼쪽 위, 드라이버 손잡이(왼쪽 끝)는 왼쪽 아래 — X 자로 겹친다
+            var wm = ((MatrixTransform)Layer<Avalonia.Controls.Shapes.Path>(badge, "Wrench").Data!.Transform!).Matrix;
+            var dm = ((MatrixTransform)Layer<Avalonia.Controls.Shapes.Path>(badge, "Screwdriver").Data!.Transform!).Matrix;
+            var wHead = new Point(2, 12).Transform(wm);
+            var dHandle = new Point(2, 12).Transform(dm);
+            Assert.True(wHead.X < size * 0.72 && wHead.Y < size * 0.72);
+            Assert.True(dHandle.X < size * 0.72 && dHandle.Y > size * 0.72);
+            // 모든 겹이 size 칸 안(도구 테두리 조금 빼고)에 들어온다
+            foreach (var p in new[] { new Point(23, 12).Transform(wm), new Point(23, 12).Transform(dm) })
+                Assert.True(p.X <= size && p.Y <= size && p.X >= 0 && p.Y >= 0, p.ToString());
+        }
+    });
+
+    /// 도구 경로는 해석되고, 렌치는 한 조각 · 드라이버는 세 조각
+    [Fact]
+    public Task Mssql_ToolPaths_Parse() => UiThread.Run(() =>
+    {
+        Assert.Single(PathGeometry.Parse(BrandLogo.MssqlWrench).Figures!);
+        Assert.Equal(3, PathGeometry.Parse(BrandLogo.MssqlScrewdriver).Figures!.Count);
     });
 
     /// MySQL 은 작은 크기에서 글자가 뭉개져 돌고래만 (Mac keepSubpaths maxY <= 13.6)

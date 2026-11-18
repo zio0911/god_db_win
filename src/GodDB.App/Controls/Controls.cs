@@ -52,7 +52,7 @@ public class AdaptiveBar : ScrollViewer
     }
 }
 
-/// DB 종류 아이콘: 브랜드 로고(MySQL · PostgreSQL · Redis, Simple Icons)를 브랜드 색으로. SQL Server 는 서버 랙 모양. (Mac KindBadge)
+/// DB 종류 아이콘: 브랜드 로고(MySQL · PostgreSQL · Redis, Simple Icons)를 브랜드 색으로. PostgreSQL 은 파랗게 채운 코끼리(PostgresIcon), SQL Server 는 자체 그림(MSSQLIcon). (Mac KindBadge)
 public class KindBadge : Border
 {
     public static readonly StyledProperty<DatabaseKind> KindProperty =
@@ -66,9 +66,11 @@ public class KindBadge : Border
 
     private readonly Avalonia.Controls.Shapes.Path _logo = new() { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
-    /// 그리는 로고 모양 (테스트용)
-    public Geometry? Logo => _logo.Data;
-    public IBrush? LogoBrush => _logo.Fill;
+    /// 그리는 로고 모양 (테스트용). PostgreSQL · SQL Server 는 여러 겹 그림(Layers)이라 null
+    public Geometry? Logo => Child == _logo ? _logo.Data : null;
+    public IBrush? LogoBrush => Child == _logo ? _logo.Fill : null;
+    /// 여러 겹 그림 (PostgreSQL · SQL Server, 테스트용)
+    public Canvas? Layers => Child as Canvas;
 
     public KindBadge()
     {
@@ -89,10 +91,15 @@ public class KindBadge : Border
     private void Refresh()
     {
         Width = Height = Size;
-        // SQL Server 랙 모양은 SF Symbol 처럼 글자 크기의 0.78 정도로
-        _logo.Width = _logo.Height = Kind == DatabaseKind.Mssql ? Size * 0.78 : Size;
-        _logo.Data = BrandLogo.Path(Kind);
-        _logo.Fill = new SolidColorBrush(ColorOf(Kind));
+        if (Kind == DatabaseKind.Postgres) Child = BrandLogo.PostgresIcon(Size);
+        else if (Kind == DatabaseKind.Mssql) Child = BrandLogo.MssqlIcon(Size);
+        else
+        {
+            _logo.Width = _logo.Height = Size;
+            _logo.Data = BrandLogo.Path(Kind);
+            _logo.Fill = new SolidColorBrush(ColorOf(Kind));
+            Child = _logo;
+        }
         ToolTip.SetTip(this, Kind.Title());
         Avalonia.Automation.AutomationProperties.SetName(this, Kind.Title());
     }
