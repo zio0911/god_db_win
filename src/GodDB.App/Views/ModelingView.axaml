@@ -1,8 +1,64 @@
-<!-- 모델링 화면 (모델링 포팅에서 바꾼다). DataContext = AppState -->
+<!-- 모델링 모드 (Mac ModelingView): 왼쪽 모델 목록 + 가운데 다이어그램 + 아래 테이블/관계 편집기. DataContext = AppState.
+     목록은 여기서, 도구 막대 · 다이어그램 · 편집기는 코드(ModelingView.axaml.cs, ModelingEditors.cs)에서 만든다. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:c="using:GodDB.App.Controls"
+             xmlns:l="using:GodDB.App.Infrastructure"
              x:Class="GodDB.App.Views.ModelingView"
-             x:DataType="vm:AppState">
-  <TextBlock Text="모델링 (작업 중)" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="secondary"/>
+             x:DataType="vm:ModelingViewModel">
+  <Grid x:Name="Root" ColumnDefinitions="220,Auto,*">
+    <!-- 모델 목록 -->
+    <DockPanel Background="{DynamicResource PanelBackground}">
+      <DockPanel DockPanel.Dock="Top" Margin="10,8">
+        <Button x:Name="AddMenuButton" DockPanel.Dock="Right" Classes="hover" Content="＋"
+                ToolTip.Tip="{l:T '새 모델 / 리버스 엔지니어링 / 파일 열기'}">
+          <Button.Flyout>
+            <MenuFlyout>
+              <MenuItem Header="{l:T 새 모델}" Click="OnNewModel"/>
+              <MenuItem Header="{l:T '현재 DB 에서 리버스 엔지니어링…'}" Click="OnReverse" IsEnabled="{Binding CanReverseEngineer}"/>
+              <MenuItem Header="{l:T '예시 모델 (쇼핑몰)'}" Click="OnSample"/>
+              <Separator/>
+              <MenuItem Header="{l:T '모델 파일 열기…'}" Click="OnImport"/>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+        <TextBlock Text="{l:T 모델}" Classes="headline" VerticalAlignment="Center"/>
+      </DockPanel>
+      <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource DividerBrush}"/>
+      <TextBlock DockPanel.Dock="Bottom" Classes="caption" Margin="8"
+                 Text="{l:T '자동 저장돼요. 파일로 내보내면 다른 사람과 공유할 수 있어요.'}"/>
+      <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource DividerBrush}"/>
+      <ListBox x:Name="ModelList" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}" Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="vm:ModelRow">
+            <StackPanel Spacing="2" Margin="0,2" Background="Transparent">
+              <StackPanel.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="{l:T 이름 바꾸기}" Click="OnRename"/>
+                  <MenuItem Header="{l:T 복제}" Click="OnDuplicate"/>
+                  <MenuItem Header="{l:T '파일로 내보내기…'}" Click="OnExport"/>
+                  <Separator/>
+                  <MenuItem Header="{l:T '삭제…'}" Click="OnDelete" Foreground="{DynamicResource RedBrush}"/>
+                </ContextMenu>
+              </StackPanel.ContextMenu>
+              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" IsVisible="{Binding !IsRenaming}"/>
+              <TextBox Text="{Binding RenameText}" IsVisible="{Binding IsRenaming}" KeyDown="OnRenameKey" LostFocus="OnRenameLostFocus"
+                       AttachedToVisualTree="OnRenameBoxAttached"/>
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding UpdatedText}" FontSize="10" Classes="secondary"/>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <c:KindBadge Kind="{Binding Kind}"/>
+                  <TextBlock Text="{Binding Subtitle}" FontSize="10" Classes="secondary" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+              </DockPanel>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+    <GridSplitter Grid.Column="1" Width="3" MinWidth="3" Background="{DynamicResource DividerBrush}" ResizeDirection="Columns"/>
+    <!-- 편집기 (코드에서 채움) / 모델이 없을 때 안내 -->
+    <ContentControl x:Name="EditorHost" Grid.Column="2"/>
+  </Grid>
 </UserControl>
