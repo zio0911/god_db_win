@@ -5,6 +5,8 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+    <!-- 편집기(AvaloniaEdit) 테마: 없으면 자동완성 목록 등에 화면 틀이 없어 Tab 자동완성에서 오류가 난다 -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
     <StyleInclude Source="avares://GodDB/Styles/AppStyles.axaml"/>
   </Application.Styles>
 </Application>

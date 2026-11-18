@@ -15,6 +15,14 @@ public partial class RedisKeySearchBar : UserControl
         // 첫 줄 = 모든 타입 ("")
         TypeBox.ItemsSource = new[] { Tr("모든 타입") }.Concat(RedisWorkspace.KeyTypes).ToList();
         TypeBox.SelectedIndex = 0;
+        L10n.LanguageChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var i = TypeBox.SelectedIndex;
+            _syncing = true;
+            TypeBox.ItemsSource = new[] { Tr("모든 타입") }.Concat(RedisWorkspace.KeyTypes).ToList();
+            TypeBox.SelectedIndex = Math.Max(0, i);
+            _syncing = false;
+        });
         PatternBox.KeyDown += (_, e) =>
         {
             if (e.Key != Key.Enter || Ws is not { } ws) return;
