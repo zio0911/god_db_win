@@ -99,7 +99,7 @@ public class ModelingViewTests
         Assert.NotNull(view.Canvas);
         Assert.Equal(DatabaseKind.Mysql, vm.Model!.Kind);
         Assert.Single(vm.Model.Tables);
-        vm.AddSample();
+        vm.NewModel();
         vm.Duplicate(vm.Model!.Id);
         Assert.Equal(3, vm.Rows.Count);
         Assert.EndsWith(" 복사본", vm.Rows[0].Name);

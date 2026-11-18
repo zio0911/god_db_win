@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
 namespace GodDB.App.Controls;
@@ -38,6 +39,11 @@ public sealed class ModelCanvas : Control
     private Point _pressPoint;
     private bool _dragging;
     private bool _pressed;
+    // 자동 정렬 애니메이션 (Mac withAnimation(.easeInOut(duration: 0.25)) { autoLayout() }):
+    // 카드 · 관계 표시(Mac 은 뷰)는 출발 자리 → 새 자리로 움직이고, 관계선(Mac Canvas)은 새 자리로 바로 그린다
+    private readonly Tween _tween = new();
+    private Dictionary<Guid, Point>? _cardFrom, _badgeFrom;
+    private double _animT = 1;
 
     public ModelCanvas(ModelingViewModel vm)
     {
@@ -45,6 +51,12 @@ public sealed class ModelCanvas : Control
         Focusable = true;
         ClipToBounds = true;
         vm.Redraw += () => { InvalidateMeasure(); InvalidateVisual(); };
+        vm.AutoLayoutStarting += CaptureForAnimation;
+        vm.AutoLayoutFinished += () =>
+        {
+            if (_cardFrom == null) return;
+            _tween.Start(0.25, t => { _animT = t; InvalidateVisual(); }, () => { _cardFrom = _badgeFrom = null; });
+        };
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ModelingViewModel.Zoom)) { InvalidateMeasure(); InvalidateVisual(); }
@@ -56,6 +68,35 @@ public sealed class ModelCanvas : Control
     {
         _fixedModel = model;
         _fixedMode = mode;
+    }
+
+    /// 자동 정렬 애니메이션 (테스트에서 Finish 로 바로 끝낸다)
+    public Tween LayoutTween => _tween;
+
+    private bool Animating => _cardFrom != null && _animT < 1;
+
+    /// 카드가 지금 그려지는 자리 (애니메이션 중이면 그 중간)
+    public Point ShownCardOrigin(ModelTable t) =>
+        Animating && _cardFrom!.TryGetValue(t.Id, out var a) ? new Point(Tween.Lerp(a.X, t.X, _animT), Tween.Lerp(a.Y, t.Y, _animT)) : new Point(t.X, t.Y);
+
+    private Point? ShownBadgeCenter(DataModel m, ModelRelation r)
+    {
+        if (ModelDiagram.Midpoint(m, r) is not { } mid) return null;
+        if (Animating && _badgeFrom!.TryGetValue(r.Id, out var a)) return new Point(Tween.Lerp(a.X, mid.X, _animT), Tween.Lerp(a.Y, mid.Y, _animT));
+        return new Point(mid.X, mid.Y);
+    }
+
+    private void CaptureForAnimation()
+    {
+        if (Model is not { } m) return;
+        var cards = new Dictionary<Guid, Point>();
+        var badges = new Dictionary<Guid, Point>();
+        foreach (var t in m.Tables) cards[t.Id] = ShownCardOrigin(t);
+        foreach (var r in m.Relations) if (ShownBadgeCenter(m, r) is { } b) badges[r.Id] = b;
+        _tween.Cancel();
+        _cardFrom = cards;
+        _badgeFrom = badges;
+        _animT = 0;
     }
 
     private DataModel? Model => Vm?.Model ?? _fixedModel;
@@ -164,7 +205,7 @@ public sealed class ModelCanvas : Control
     private Rect? BadgeRect(DataModel m, ModelRelation r, out FormattedText? text, IBrush? fg = null)
     {
         text = null;
-        if (ModelDiagram.Midpoint(m, r) is not { } mid) return null;
+        if (ShownBadgeCenter(m, r) is not { } mid) return null;
         text = Text(ModelDiagram.RelationBadge(r), 10, fg ?? Brushes.White, bold: true);
         double w = text.Width + 10, h = Math.Max(14, text.Height + 2);
         return new Rect(mid.X - w / 2, mid.Y - h / 2, w, h);
@@ -182,6 +223,8 @@ public sealed class ModelCanvas : Control
 
     private void DrawCard(DrawingContext ctx, DataModel m, ModelTable t)
     {
+        var o = ShownCardOrigin(t);
+        using var _ = ctx.PushTransform(Matrix.CreateTranslation(o.X - t.X, o.Y - t.Y));
         var f = ModelDiagram.Frame(t);
         var rect = new Rect(f.X, f.Y, f.Width, f.Height);
         var header = new SolidColorBrush(CardColor(t.Color));
@@ -327,6 +370,7 @@ public sealed class ModelCanvas : Control
     {
         base.OnPointerPressed(e);
         if (Vm == null || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        _tween.Finish();   // 정렬 애니메이션 중에 누르면 끝 자리에서
         Focus();
         var p = ModelPoint(e);
         _pressPoint = p;

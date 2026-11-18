@@ -102,8 +102,7 @@ public partial class ModelingView : UserControl
         var desc = Ui.Text(Tr("논리명으로 테이블을 설계하고 관계를 이어 다이어그램으로 보고, 물리명을 붙여 SQL 로 뽑을 수 있어요."), "secondary");
         desc.TextAlignment = TextAlignment.Center;
         desc.MaxWidth = 420;
-        var buttons = Ui.HStack(8, Ui.Button(Tr("새 모델"), vm.NewModel, accent: true), reverse,
-                                Ui.Button(Tr("예시 모델 (쇼핑몰)"), vm.AddSample));
+        var buttons = Ui.HStack(8, Ui.Button(Tr("새 모델"), vm.NewModel, accent: true), reverse);
         buttons.HorizontalAlignment = HorizontalAlignment.Center;
         var s = Ui.Stack(14, title, desc, buttons);
         s.HorizontalAlignment = HorizontalAlignment.Center;
@@ -148,8 +147,7 @@ public partial class ModelingView : UserControl
             Child = Ui.HStack(2,
                 ModelUi.IconButton("−", Tr("축소"), vm.ZoomOut),
                 _zoomText,
-                ModelUi.IconButton("+", Tr("확대"), vm.ZoomIn),
-                ModelUi.IconButton("⤢", Tr("화면에 맞추기"), () => vm.Fit(_canvasScroll.Viewport.Width, _canvasScroll.Viewport.Height))),
+                ModelUi.IconButton("+", Tr("확대"), vm.ZoomIn)),
         };
         var overlay = Ui.HStack(6, modePicker, zoom);
         overlay.HorizontalAlignment = HorizontalAlignment.Right;
@@ -333,7 +331,6 @@ public partial class ModelingView : UserControl
 
     private void OnNewModel(object? sender, RoutedEventArgs e) => Vm?.NewModel();
     private void OnReverse(object? sender, RoutedEventArgs e) => Vm?.ReverseEngineer();
-    private void OnSample(object? sender, RoutedEventArgs e) => Vm?.AddSample();
     private void OnImport(object? sender, RoutedEventArgs e) { if (Vm != null) _ = Vm.ImportAsync(); }
 
     private void OnRename(object? sender, RoutedEventArgs e) { if (RowOf(sender) is { } r) Vm?.StartRename(r); }

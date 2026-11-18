@@ -31,6 +31,11 @@ public sealed class DiagramWindow : Window
     private readonly Button? _aiButton;
     private bool _didFit;
     private double _aiWidth = 380;
+    // Mac withAnimation(.easeInOut(duration: 0.2)) { fit() } · { showAI.toggle() }
+    private readonly Tween _zoomTween = new();
+    private readonly Tween _aiTween = new();
+    private bool _animateZoom;
+    private double _shownZoom = 1;
 
     public DiagramWindow(AppState app, object? argument)
     {
@@ -56,6 +61,7 @@ public sealed class DiagramWindow : Window
         Title = Tr("ER 다이어그램 · %@", doc.Title);
         var vm = Vm = new DiagramViewModel(doc);
         Canvas = new DiagramCanvas(vm);
+        _shownZoom = vm.Zoom;
         _zoomHost = new LayoutTransformControl { Child = Canvas, LayoutTransform = new ScaleTransform(vm.Zoom, vm.Zoom) };
         _scroll = new ScrollViewer
         {
@@ -112,25 +118,67 @@ public sealed class DiagramWindow : Window
 
     public bool AiVisible { get; private set; }
 
-    private void ToggleAi() => SetAiVisible(!AiVisible);
+    private void ToggleAi() => SetAiVisible(!AiVisible, animate: true);
 
-    public void SetAiVisible(bool on)
+    /// AI 패널 열고 닫기. animate 면 Mac 처럼 0.2초 동안 나타나고 사라진다 (SwiftUI if 의 기본 전환 = 투명도).
+    public void SetAiVisible(bool on, bool animate = false)
     {
         if (_aiColumn == null || AiPanel == null || _splitter == null) return;
         if (AiVisible && _aiColumn.Width.IsAbsolute && _aiColumn.Width.Value > 0) _aiWidth = _aiColumn.Width.Value;
         AiVisible = on;
-        AiPanel.IsVisible = on;
-        _splitter.IsVisible = on;
-        _aiColumn.MinWidth = on ? 300 : 0;
-        _aiColumn.MaxWidth = on ? 700 : 0;
-        _aiColumn.Width = new GridLength(on ? _aiWidth : 0);
+        _aiTween.Cancel();
         if (_aiButton != null) _aiButton.Foreground = on ? new SolidColorBrush(DiagramCanvas.Purple) : null;
+        void Layout(bool show)
+        {
+            AiPanel.IsVisible = show;
+            _splitter.IsVisible = show;
+            _aiColumn.MinWidth = show ? 300 : 0;
+            _aiColumn.MaxWidth = show ? 700 : 0;
+            _aiColumn.Width = new GridLength(show ? _aiWidth : 0);
+        }
+        if (!animate)
+        {
+            AiPanel.Opacity = 1;
+            Layout(on);
+            return;
+        }
+        if (on)
+        {
+            Layout(true);
+            _aiTween.Start(0.2, t => AiPanel.Opacity = t);
+        }
+        else
+        {
+            var from = AiPanel.Opacity;
+            _aiTween.Start(0.2, t => AiPanel.Opacity = from * (1 - t), () => { Layout(false); AiPanel.Opacity = 1; });
+        }
+    }
+
+    /// 지금 화면에 보이는 배율 (화면에 맞추기 애니메이션 중이면 그 중간 값)
+    public double ShownZoom => _shownZoom;
+    public Tween ZoomTween => _zoomTween;
+
+    private void ApplyZoom(double z)
+    {
+        _shownZoom = z;
+        if (_zoomHost != null) _zoomHost.LayoutTransform = new ScaleTransform(z, z);
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(DiagramViewModel.Zoom) && _zoomHost != null && Vm != null)
-            _zoomHost.LayoutTransform = new ScaleTransform(Vm.Zoom, Vm.Zoom);
+        if (e.PropertyName != nameof(DiagramViewModel.Zoom) || _zoomHost == null || Vm == null) return;
+        var target = Vm.Zoom;
+        if (_animateZoom)
+        {
+            var from = _shownZoom;
+            _zoomTween.Start(0.2, t => ApplyZoom(Tween.Lerp(from, target, t)));
+        }
+        else
+        {
+            // 확대 · 축소 · 100% 단추와 Ctrl+휠은 Mac 처럼 바로
+            _zoomTween.Cancel();
+            ApplyZoom(target);
+        }
     }
 
     private static Button ToolButton(string text, string? tip, Action onClick)
@@ -198,9 +246,13 @@ public sealed class DiagramWindow : Window
         return bar;
     }
 
+    /// 화면에 맞추기 단추 — Mac 처럼 0.2초 동안 배율이 바뀐다 (처음 열 때 맞추기는 바로)
     public void FitToWindow()
     {
-        if (_scroll != null && Vm != null) Vm.Fit(_scroll.Bounds.Size);
+        if (_scroll == null || Vm == null) return;
+        _animateZoom = true;
+        try { Vm.Fit(_scroll.Bounds.Size); }
+        finally { _animateZoom = false; }
     }
 
     /// PNG 저장 (2배 해상도). 저장한 경로, 취소면 null.

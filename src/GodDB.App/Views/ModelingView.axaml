@@ -17,7 +17,6 @@
             <MenuFlyout>
               <MenuItem Header="{l:T 새 모델}" Click="OnNewModel"/>
               <MenuItem Header="{l:T '현재 DB 에서 리버스 엔지니어링…'}" Click="OnReverse" IsEnabled="{Binding CanReverseEngineer}"/>
-              <MenuItem Header="{l:T '예시 모델 (쇼핑몰)'}" Click="OnSample"/>
               <Separator/>
               <MenuItem Header="{l:T '모델 파일 열기…'}" Click="OnImport"/>
             </MenuFlyout>

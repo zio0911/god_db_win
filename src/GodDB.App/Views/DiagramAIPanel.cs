@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
@@ -244,12 +245,9 @@ public sealed partial class DiagramAIPanel : Border
         if (!isUser && m.Text.Length > 0 && !streaming)
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            var copy = new Button { Content = Tr("복사"), Classes = { "hover" }, FontSize = 11 };
-            copy.Click += async (_, _) =>
-            {
-                await App.Dialogs.SetClipboardTextAsync(m.Text);
-                copy.Content = "✓ " + Tr("복사");
-            };
+            // Mac CopyButton: 누르면 1.5초 동안 초록 "복사됨" 으로 바뀌었다가 돌아온다
+            var text = m.Text;
+            var copy = new CopyButton { Title = Tr("복사"), FontSize = 11, Copier = t => App.Dialogs.SetClipboardTextAsync(t), TextProvider = () => text };
             actions.Children.Add(copy);
             if (AiText.FirstSql(m.Text) is { } sql)
             {
