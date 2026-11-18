@@ -10,8 +10,6 @@ namespace GodDB.Core.Drivers;
 public sealed record RawResult(IReadOnlyList<string> Columns, List<string?[]> Rows)
 {
     public static readonly RawResult Empty = new([], []);
-    /// 값이 너무 커서 앞부분만 담은 칸 수 (메모리 보호)
-    public int TruncatedCells { get; init; }
     /// 영향을 받은 행 수 (INSERT/UPDATE/DELETE). 모르면 -1
     public int RecordsAffected { get; init; } = -1;
 }
@@ -56,29 +54,23 @@ public static class BinaryText
 /// ADO.NET 공통: 결과 집합 읽기, 큰 값 자르기, 주소 차례로 시도
 internal static class DriverUtil
 {
-    /// 한 칸이 이보다 길면 앞부분만 담는다 (Mac DBSession.maxCellCharacters 와 같음)
-    public const int MaxCellCharacters = 1_000_000;
-
     /// 하나의 결과 집합을 문자열 행으로 읽는다.
     public static async Task<RawResult> ReadAsync(DbDataReader r, Func<DbDataReader, int, string?> cell, CancellationToken ct)
     {
         var cols = new string[r.FieldCount];
         for (int i = 0; i < cols.Length; i++) cols[i] = r.GetName(i);
         var rows = new List<string?[]>();
-        int truncated = 0;
         while (await r.ReadAsync(ct))
         {
             var row = new string?[cols.Length];
             for (int i = 0; i < cols.Length; i++)
             {
                 if (await r.IsDBNullAsync(i, ct)) continue;
-                var v = cell(r, i);
-                if (v != null && v.Length > MaxCellCharacters) { v = v[..MaxCellCharacters]; truncated++; }
-                row[i] = v;
+                row[i] = cell(r, i);
             }
             rows.Add(row);
         }
-        return new RawResult(cols, rows) { TruncatedCells = truncated, RecordsAffected = r.RecordsAffected };
+        return new RawResult(cols, rows) { RecordsAffected = r.RecordsAffected };
     }
 
     public static string Invariant(object v) => v switch
