@@ -16,9 +16,20 @@ public static class AppStartup
     /// Prefs → LogFile · L10n
     public static void ApplyPreferences()
     {
+        UsePlatformDeviceKeys();
         LogFile.Enabled = Prefs.Get(LogFileEnabledKey, true);
         LogFile.RetentionDays = Prefs.Get(LogFileKeepDaysKey, 0);
         L10n.SetLanguage(ParseLanguage(Prefs.GetString(LanguageKey)));
+    }
+
+    /// 감사 로그 기기 키: Windows 는 TPM 키 우선, 없으면 DPAPI 로 잠근 소프트웨어 키 (Mac: Secure Enclave → 키체인)
+    private static void UsePlatformDeviceKeys()
+    {
+#if WINDOWS
+        if (!OperatingSystem.IsWindows()) return;
+        GodDB.Core.Audit.AuditChain.KeyStore = new GodDB.Platform.Windows.DpapiDeviceKeyStore();
+        GodDB.Core.Audit.AuditChain.PlatformSigner = GodDB.Platform.Windows.TpmDeviceSigner.TryCreate;
+#endif
     }
 
     /// Mac AppLanguage.rawValue ("system" / "ko" / "en")
