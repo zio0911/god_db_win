@@ -44,6 +44,8 @@ jobs:
         run: |
           dotnet tool install -g vpk
           V="$(tr -d '\r\n' < VERSION)"
+          IFS=. read -r A B C D <<< "$V"
+          if [[ -n "$D" ]]; then V="$A.$B.$((C + 1))-r.$D"; fi
           vpk pack --packId GodDB --packVersion "$V" --packDir publish --mainExe GodDB.exe \
             --packTitle GodDB --packAuthors zio0911 --outputDir Releases
           ls -la Releases

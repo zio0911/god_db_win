@@ -29,6 +29,7 @@ public static class AppStartup
         if (!OperatingSystem.IsWindows()) return;
         GodDB.Core.Audit.AuditChain.KeyStore = new GodDB.Platform.Windows.DpapiDeviceKeyStore();
         GodDB.Core.Audit.AuditChain.PlatformSigner = GodDB.Platform.Windows.TpmDeviceSigner.TryCreate;
+        GodDB.Core.Audit.AuditChain.SystemLog = GodDB.Platform.Windows.SystemLog.Write;
 #endif
     }
 

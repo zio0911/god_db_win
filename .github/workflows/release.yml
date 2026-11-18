@@ -48,6 +48,12 @@ jobs:
           F="$(tr -d '\r\n' < VERSION)"
           if [[ "$V" != "$F" ]]; then echo "태그 $TAG 와 VERSION 파일($F)이 달라요"; exit 1; fi
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          # Velopack 은 SemVer(세 자리)만 받는다. Windows 판 수정판 a.b.c.d 는 패키지 번호를 a.b.(c+1)-r.d 로
+          # (업데이트 순서: 1.3.7 < 1.3.8-r.1 < 1.3.8). 화면 · 릴리스 이름 · 태그는 a.b.c.d 그대로.
+          IFS=. read -r A B C D <<< "$V"
+          if [[ -n "$D" ]]; then P="$A.$B.$((C + 1))-r.$D"; else P="$V"; fi
+          echo "PACK_VERSION=$P" >> "$GITHUB_ENV"
+          echo "패키지 번호: $P"
 
       - name: 빌드 (win-x64, self-contained)
         run: dotnet publish src/GodDB.App/GodDB.App.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained -o publish
@@ -84,7 +90,7 @@ jobs:
         env:
           SIGN_METADATA: ${{ secrets.AZURE_SIGNING_METADATA_JSON }}
         run: |
-          ARGS=(pack --packId GodDB --packVersion "$APP_VERSION" --packDir publish --mainExe GodDB.exe
+          ARGS=(pack --packId GodDB --packVersion "$PACK_VERSION" --packDir publish --mainExe GodDB.exe
                 --packTitle GodDB --packAuthors zio0911 --outputDir Releases)
           if [[ -n "$SIGN_METADATA" ]]; then
             printf '%s' "$SIGN_METADATA" > "$RUNNER_TEMP/signing.json"

@@ -91,13 +91,13 @@
           <TextBlock Classes="groupTitle" Text="{l:T 정보}"/>
           <Border Classes="section">
             <StackPanel Spacing="6">
-              <Button x:Name="VersionButton" Command="{Binding VersionTappedCommand}" Background="Transparent" BorderThickness="0"
-                      Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+              <!-- Mac .buttonStyle(.plain): 단추처럼 보이지 않는 그냥 줄 (강조 · 눌림 · 손가락 커서 없음), 줄 전체를 누를 수 있다 -->
+              <Border x:Name="VersionRow" Background="Transparent">
                 <Grid ColumnDefinitions="*,Auto">
                   <TextBlock Text="{l:T 버전}"/>
                   <TextBlock Grid.Column="1" Text="{Binding VersionText}" Classes="secondary"/>
                 </Grid>
-              </Button>
+              </Border>
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Text="{l:T 소스 코드}" VerticalAlignment="Center"/>
                 <Button Grid.Column="1" Classes="link" Content="{Binding SourceText}" Command="{Binding OpenSourceCommand}"/>
