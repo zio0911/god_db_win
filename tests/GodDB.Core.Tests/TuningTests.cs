@@ -2,7 +2,7 @@ using GodDB.Core.Ai;
 
 namespace GodDB.Core.Tests;
 
-// "Tuning live" (로컬 Ollama + MySQL 테스트 DB 필요) 는 Ollama 클라이언트와 DB 세션을 옮길 때 통합 테스트로 옮긴다.
+// "Tuning live" (로컬 Ollama + MySQL 테스트 DB 필요) 는 tests/GodDB.Integration.Tests/TuningTests.cs 에 있다 (GODDB_OLLAMA_URL 이 있을 때만).
 
 public class TuningParseTests
 {

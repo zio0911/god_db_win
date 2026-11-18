@@ -6,6 +6,7 @@
  "ssh 프로그램을 찾지 못했어요. Windows 설정 > 시스템 > 선택적 기능에서 \"OpenSSH 클라이언트\"를 설치해 주세요.": "Couldn't find the ssh program. Install \"OpenSSH Client\" in Windows Settings > System > Optional features.",
  "메모리 (앱을 끌 때까지)": "Memory (until the app quits)",
  "바스티온의 호스트 키가 바뀌었어요. %USERPROFILE%\\.ssh\\known_hosts 에서 해당 호스트 줄을 지운 뒤 다시 시도해 주세요.": "The bastion's host key changed. Remove that host's line from %USERPROFILE%\\.ssh\\known_hosts and try again.",
+ "이 PC 밖의 주소예요. 쿼리와 테이블 구조가 그 서버로 전송돼요.": "This address is outside this PC. The query and table structures will be sent to that server.",
  "자격 증명 관리자": "Credential Manager",
  "키 파일 권한이 너무 열려 있어요. 파일 속성 > 보안에서 본인 계정만 읽을 수 있게 바꿔 주세요.": "The key file permissions are too open. In file Properties > Security, allow only your account to read it."
 }

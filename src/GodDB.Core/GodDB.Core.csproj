@@ -10,6 +10,8 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="L10n\*.json" LogicalName="GodDB.Core.L10n.%(Filename)%(Extension)" />
+    <!-- AI 어시스턴트(사용법 · 버전 질문)와 새로운 기능 창이 읽는 기능 명세 -->
+    <EmbeddedResource Include="..\..\docs\FEATURES.md" LogicalName="GodDB.Core.FEATURES.md" Link="docs\FEATURES.md" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="GodDB.Core.Tests" />
