@@ -31,7 +31,7 @@ public sealed class CsvImportWindow : Window
     private readonly Control _loadedPanel;
     private readonly Control _emptyPanel;
     private readonly SelectableTextBlock _error = new() { Classes = { "error" }, TextWrapping = TextWrapping.Wrap, MaxLines = 4 };
-    private readonly ProgressBar _progress = new() { IsIndeterminate = true, Width = 60, MinWidth = 60, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly GodDB.App.Controls.ActivitySpinner _progress = new() { Width = 16, Height = 16, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     public Button ImportButton { get; }
 
     public CsvImportWindow(AppState app, object value)

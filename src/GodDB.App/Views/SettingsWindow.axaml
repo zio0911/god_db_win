@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:GodDB.App.Controls"
         xmlns:vm="using:GodDB.App.ViewModels"
         xmlns:l="using:GodDB.App.Infrastructure"
         xmlns:sys="using:System"
@@ -66,7 +67,7 @@
                   <Button Grid.Column="2" Content="{l:T 검사}" Command="{Binding CheckAuditCommand}"/>
                 </Grid>
                 <SelectableTextBlock Text="{Binding AuditFolderText}" Classes="caption mono"/>
-                <ProgressBar IsIndeterminate="True" IsVisible="{Binding AuditChecking}" Width="80" HorizontalAlignment="Left"/>
+                <c:ActivitySpinner IsVisible="{Binding AuditChecking}" Width="16" Height="16" HorizontalAlignment="Left"/>
                 <ItemsControl ItemsSource="{Binding AuditReports}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="sys:String">
@@ -122,7 +123,7 @@
               <TextBlock Classes="caption" Text="{Binding NonLocalWarning}" IsVisible="{Binding IsNonLocal}" Foreground="{DynamicResource OrangeBrush}"/>
               <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                 <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"/>
-                <ProgressBar Grid.Column="1" IsIndeterminate="True" Width="40" MinWidth="40" IsVisible="{Binding Checking}"/>
+                <c:ActivitySpinner Grid.Column="1" Width="16" Height="16" VerticalAlignment="Center" IsVisible="{Binding Checking}"/>
                 <Button Grid.Column="2" Content="{l:T 다시 확인}" Command="{Binding RefreshCommand}"/>
               </Grid>
               <Button Content="{l:T Ollama 실행}" Command="{Binding StartOllamaCommand}" IsVisible="{Binding CanStartOllama}"/>

@@ -131,7 +131,7 @@
                     ToolTip.Tip="{l:T '스키마 새로고침 (Ctrl+Shift+R)'}"/>
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SchemaLoading}" Margin="4,2">
-            <ProgressBar IsIndeterminate="True" Width="40" MinWidth="40" Height="4"/>
+            <c:ActivitySpinner Width="14" Height="14" VerticalAlignment="Center"/>
             <TextBlock Text="{l:T 스키마 불러오는 중…}" FontSize="11" Classes="secondary"/>
           </StackPanel>
 

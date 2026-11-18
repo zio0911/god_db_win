@@ -122,7 +122,7 @@ public sealed class TuningSheet : Window
             Body.Children.Add(new SelectableTextBlock { Text = "⛔ " + job.PhaseText, Classes = { "error" }, TextWrapping = TextWrapping.Wrap });
         else
             Body.Children.Add(Ui.HStack(8,
-                new ProgressBar { IsIndeterminate = true, Width = 60, MinWidth = 60, VerticalAlignment = VerticalAlignment.Center },
+                new GodDB.App.Controls.ActivitySpinner { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center },
                 new TextBlock { Text = job.PhaseText }));
         if (job.Streamed.Length > 0)
             Body.Children.Add(CodeBorder(new SelectableTextBlock { Text = job.Streamed, Classes = { "mono" }, TextWrapping = TextWrapping.Wrap }));

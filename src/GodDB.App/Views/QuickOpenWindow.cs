@@ -19,7 +19,7 @@ public sealed class QuickOpenWindow : Window
     private bool _syncing;
     public TextBox SearchBox { get; }
     public ListBox List { get; }
-    private readonly ProgressBar _loading = new() { IsIndeterminate = true, Width = 40, MinWidth = 40, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly GodDB.App.Controls.ActivitySpinner _loading = new() { Width = 16, Height = 16, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _empty = new() { Classes = { "secondary" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     /// 고른 항목 Id (↑↓ 로 움직인다)
     public string? SelectedId { get; private set; }

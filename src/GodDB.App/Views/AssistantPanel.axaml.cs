@@ -211,7 +211,7 @@ public partial class AssistantPanel : UserControl
         if (chat.Running)
         {
             var progress = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Name = "Progress" };
-            progress.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 40, MinWidth = 40, VerticalAlignment = VerticalAlignment.Center });
+            progress.Children.Add(new GodDB.App.Controls.ActivitySpinner { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center });
             progress.Children.Add(Ui.Caption(chat.ProgressText));
             Transcript.Children.Add(progress);
         }
