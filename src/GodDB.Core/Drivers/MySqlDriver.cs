@@ -4,6 +4,7 @@ using MySqlConnector;
 namespace GodDB.Core.Drivers;
 
 /// MySQL (MySqlConnector). 프로시저(CALL)가 결과 집합을 여러 개 돌려주면 첫 결과 집합만.
+/// 행이 없는 결과는 컬럼도 없다 (Mac MySQLDriver 는 첫 행에서 컬럼 이름을 읽어서, 빈 결과면 컬럼이 비고 화면에 "결과 없음").
 public sealed class MySqlDriver : IDbDriver
 {
     private readonly MySqlConnection _conn;
@@ -48,7 +49,11 @@ public sealed class MySqlDriver : IDbDriver
         RawResult? first = null;
         do
         {
-            if (r.FieldCount > 0 && first == null) first = await DriverUtil.ReadAsync(r, Cell, ct);
+            if (r.FieldCount > 0 && first == null)
+            {
+                var set = await DriverUtil.ReadAsync(r, Cell, ct);
+                if (set.Rows.Count > 0) first = set;
+            }
         } while (await r.NextResultAsync(ct));
         return first ?? RawResult.Empty with { RecordsAffected = r.RecordsAffected };
     }
