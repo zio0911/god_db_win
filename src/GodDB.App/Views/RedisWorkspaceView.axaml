@@ -1,8 +1,36 @@
-<!-- Redis 화면: 키 · 콘솔 · Pub/Sub · 스트림 · 서버 정보 (Redis 화면 포팅에서 바꾼다). DataContext = RedisWorkspace -->
+<!-- Redis 화면: 키 · Workbench · Pub/Sub · Streams · 서버 정보. DataContext = RedisWorkspace — Mac RedisWorkspaceView -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:l="using:GodDB.App.Infrastructure"
              x:Class="GodDB.App.Views.RedisWorkspaceView"
              x:DataType="vm:RedisWorkspace">
-  <TextBlock Text="Redis 화면 (작업 중)" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="secondary"/>
+  <UserControl.Styles>
+    <Style Selector="ToggleButton.tab">
+      <Setter Property="Padding" Value="10,3"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+  </UserControl.Styles>
+  <DockPanel>
+    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+        <StackPanel x:Name="Tabs" Orientation="Horizontal" Spacing="0">
+          <ToggleButton Classes="tab" x:Name="TabKeys" Content="{l:T 키}"/>
+          <ToggleButton Classes="tab" x:Name="TabConsole" Content="Workbench"/>
+          <ToggleButton Classes="tab" x:Name="TabPubSub" Content="Pub/Sub"/>
+          <ToggleButton Classes="tab" x:Name="TabStreams" Content="Streams"/>
+          <ToggleButton Classes="tab" x:Name="TabInfo" Content="{l:T 서버 정보}"/>
+        </StackPanel>
+        <Border Grid.Column="2" Background="#1FAF52DE" CornerRadius="9" Padding="6,2" VerticalAlignment="Center"
+                IsVisible="{Binding HasTopology}" ToolTip.Tip="{Binding NodesTip}">
+          <TextBlock Text="{Binding TopologyText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource PurpleBrush}"/>
+        </Border>
+        <TextBlock Grid.Column="3" Text="{Binding HeaderText}" Classes="secondary" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="4" FontSize="11" Foreground="{DynamicResource OrangeBrush}" VerticalAlignment="Center"
+                   IsVisible="{Binding ReadOnly}"><Run Text="🔒 "/><Run Text="{l:T 읽기전용}"/></TextBlock>
+      </Grid>
+    </Border>
+    <ContentControl x:Name="Host"/>
+  </DockPanel>
 </UserControl>
