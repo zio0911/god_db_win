@@ -50,6 +50,28 @@ internal static class Q
         ? new Border { Width = 1, Height = 16, Classes = { "divider" }, Margin = new Thickness(2, 0), VerticalAlignment = VerticalAlignment.Center }
         : new Border { Height = 1, Classes = { "divider" } };
 
+    /// 끌어서 크기를 바꾸는 경계선 (Mac ResizeHandle): 1pt 구분선 + 양쪽 3pt 잡는 여백.
+    /// Fluent 기본 GridSplitter 는 배경이 창 배경과 같은 색이라 경계가 보이지 않아 직접 그린다.
+    public static GridSplitter ResizeHandle(bool rows)
+    {
+        var s = new GridSplitter
+        {
+            ResizeDirection = rows ? GridResizeDirection.Rows : GridResizeDirection.Columns,
+            Background = Brushes.Transparent,
+            Cursor = new Cursor(rows ? StandardCursorType.SizeNorthSouth : StandardCursorType.SizeWestEast),
+            Template = new Avalonia.Controls.Templates.FuncControlTemplate<GridSplitter>((_, _) => new Border
+            {
+                Background = Brushes.Transparent,
+                Child = rows
+                    ? new Border { Height = 1, Classes = { "divider" }, VerticalAlignment = VerticalAlignment.Center }
+                    : new Border { Width = 1, Classes = { "divider" }, HorizontalAlignment = HorizontalAlignment.Center },
+            }),
+        };
+        if (rows) s.Height = s.MinHeight = 7;
+        else s.Width = s.MinWidth = 7;
+        return s;
+    }
+
     public static Border Pill(string text, IBrush color)
     {
         var tb = new TextBlock { Text = text, Foreground = color, FontSize = 12 };
@@ -656,7 +678,8 @@ public sealed class ResultPane : UserControl
     public QuickFilterBar Filter { get; } = new();
     public ResultStatusBar Status { get; } = new();
     public PlanWarningsView Plan { get; } = new();
-    public SelectableTextBlock ErrorText { get; } = new() { Foreground = Q.Red, FontFamily = Q.Mono, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+    // Mac .font(.system(.body, design: .monospaced)) = 13pt
+    public SelectableTextBlock ErrorText { get; } = new() { Foreground = Q.Red, FontFamily = Q.Mono, FontSize = 13, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
     private readonly ScrollViewer _errorScroll;
     private readonly TextBlock _message = new() { Classes = { "secondary" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     private readonly Grid _body;
@@ -683,7 +706,14 @@ public sealed class ResultPane : UserControl
         Running = new RunningView(() => { if (_tab is { } t) _app.Fire(() => _app.CancelQueryAsync(t.Id)); });
         Detail = new RowDetailPanel(() => Grid.Select([]));
         EditBar = new EditBar(app, () => _tab, () => Grid.SelectedIds, id => Grid.Select([id]));
-        _errorScroll = new ScrollViewer { Content = ErrorText };
+        // 오류 글이 160 을 넘으면 Mac 처럼 스크롤 (자동 숨김 스크롤 막대면 아래 줄이 그냥 잘려 보여서 막대를 늘 보인다)
+        _errorScroll = new ScrollViewer
+        {
+            Content = ErrorText,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            AllowAutoHide = false,
+        };
         TabsBar.OnSelect = i =>
         {
             if (_tab is not { } t) return;
@@ -706,7 +736,7 @@ public sealed class ResultPane : UserControl
         Grid.SelectedIdsChanged += OnSelectionChanged;
         Filter.FilterChanged += _ => Refresh();
 
-        _detailSplitter = new GridSplitter { ResizeDirection = GridResizeDirection.Columns, Width = 4, Classes = { "divider" } };
+        _detailSplitter = Q.ResizeHandle(rows: false);
         _detailSplitter.DragCompleted += (_, _) =>
         {
             if (_body!.ColumnDefinitions[2].ActualWidth > 0) _detailWidth = _body.ColumnDefinitions[2].ActualWidth;

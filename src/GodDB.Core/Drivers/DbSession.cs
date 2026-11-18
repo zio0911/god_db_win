@@ -9,7 +9,12 @@ using static GodDB.Core.L10n;
 namespace GodDB.Core.Drivers;
 
 /// 트랜잭션 상태 (자동 커밋 / 열린 트랜잭션 / 변경 건수)
-public readonly record struct TransactionState(bool AutoCommit = true, bool Open = false, int Changes = 0);
+public readonly record struct TransactionState(bool AutoCommit = true, bool Open = false, int Changes = 0)
+{
+    /// C# 의 `new TransactionState()` 는 기본 인자를 쓰지 않고 모두 0(자동 커밋 꺼짐)으로 만든다.
+    /// Mac `TransactionState()` 처럼 자동 커밋 켜짐이 기본이 되도록 직접 둔다 (접속 직후 체크박스가 꺼져 보이던 문제).
+    public TransactionState() : this(true) { }
+}
 
 /// 시작·커밋·롤백 SQL (Mac: ResultEditing.swift 의 SQLDialect 확장)
 public static class TransactionSql
