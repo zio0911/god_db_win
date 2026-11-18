@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         Vm = new SettingsViewModel(app, app?.Dialogs is NullDialogs or null ? new WindowDialogs(this) : app.Dialogs);
+        VersionRow.PointerPressed += (_, e) => { if (e.GetCurrentPoint(VersionRow).Properties.IsLeftButtonPressed) Vm.VersionTapped(); };
         DataContext = Vm;
         BuildRadios();
         L10n.LanguageChanged += OnLanguageChanged;

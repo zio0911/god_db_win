@@ -14,6 +14,7 @@ internal static class Program
         var i = Array.IndexOf(args, "--verify-audit");
         if (i >= 0)
         {
+            AttachToParentConsole();
             var dir = args.Length > i + 1 ? args[i + 1] : LogFile.Shared.Directory;
             var reports = AuditChain.Verify(dir);
             foreach (var r in reports) Console.WriteLine(AuditChain.Describe(r));
@@ -22,6 +23,23 @@ internal static class Program
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         return 0;
     }
+
+    /// Windows 의 창 앱은 콘솔이 없어서 출력이 사라진다 → 부른 명령 프롬프트 · PowerShell 에 붙어 거기에 쓴다
+    private static void AttachToParentConsole()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            if (!AttachConsole(-1)) return;
+            var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false)) { AutoFlush = true };
+            Console.SetOut(stdout);
+            Console.WriteLine();
+        }
+        catch { }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(int processId);
 
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
