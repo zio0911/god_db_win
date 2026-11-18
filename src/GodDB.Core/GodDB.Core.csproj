@@ -9,6 +9,9 @@
     <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="L10n\*.json" LogicalName="GodDB.Core.L10n.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="GodDB.Core.Tests" />
     <InternalsVisibleTo Include="GodDB.Integration.Tests" />
   </ItemGroup>
