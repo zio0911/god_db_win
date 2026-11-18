@@ -37,7 +37,8 @@ public sealed partial class DiagramAIPanel : Border
         this.Bind(BackgroundProperty, this.GetResourceObservable("PanelBackground"));
 
         _newButton = IconButton("＋💬", Tr("새 대화 (지금 대화는 기록에 남아요)"), Chat.StartNew);
-        _historyButton = IconButton("🕘", Tr("이전 대화 (90일 보관)"), () => { });
+        _historyButton = IconButton("", Tr("이전 대화 (90일 보관)"), () => { });
+        _historyButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History);
         _historyButton.Flyout = new MenuFlyout();
         ((MenuFlyout)_historyButton.Flyout).Opening += (_, _) => FillHistory((MenuFlyout)_historyButton.Flyout!);
         _trashButton = IconButton("🗑", Tr("지금 대화 삭제"), () => Chat.Delete(Chat.ConversationId));

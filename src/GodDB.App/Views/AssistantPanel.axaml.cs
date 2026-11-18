@@ -26,6 +26,7 @@ public partial class AssistantPanel : UserControl
     public AssistantPanel()
     {
         InitializeComponent();
+        HistoryButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History);
         InputBox.AcceptsReturn = true;
         DataContextChanged += (_, _) =>
         {

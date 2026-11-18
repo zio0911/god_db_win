@@ -242,7 +242,9 @@ public sealed class DiagramWindow : Window
         bar.Children.Add(ToolButton("⤢ " + Tr("화면에 맞추기"), Tr("모든 테이블이 한 화면에 보이게 확대/축소"), FitToWindow));
         bar.Children.Add(Separator());
         bar.Children.Add(ToolButton("▦ " + Tr("자동 정렬"), null, vm.Relayout));
-        bar.Children.Add(ToolButton("⤓ " + Tr("PNG 저장"), null, () => App.Fire(ExportPngAsync)));
+        var png = ToolButton("", null, () => App.Fire(ExportPngAsync));
+        png.Content = GodDB.App.Controls.SymbolIcon.WithText(GodDB.App.Controls.Symbol.Download, Tr("PNG 저장"));
+        bar.Children.Add(png);
         bar.Children.Add(Separator());
         bar.Children.Add(_aiButton!);
         return bar;

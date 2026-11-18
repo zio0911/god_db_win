@@ -40,7 +40,7 @@ public sealed class HistoryWindow : Window
         OnlyThisConnection = new CheckBox { Content = Tr("이 접속만"), IsChecked = true, IsEnabled = app.SelectedProfileId != null, VerticalAlignment = VerticalAlignment.Center };
         OnlyThisConnection.IsCheckedChanged += (_, _) => Refresh();
         var top = new DockPanel { Margin = new Thickness(10) };
-        var icon = new TextBlock { Text = "🕘", Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var icon = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History) { Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(icon, Dock.Left);
         DockPanel.SetDock(OnlyThisConnection, Dock.Right);
         OnlyThisConnection.Margin = new Thickness(8, 0, 0, 0);

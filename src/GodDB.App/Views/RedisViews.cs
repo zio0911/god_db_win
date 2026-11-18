@@ -748,7 +748,8 @@ public sealed class RedisConsoleView : UserControl
         RunButton = new Button { Classes = { "accent" } };
         ToolTip.SetTip(RunButton, Tr("Ctrl+Enter · 선택 영역이 있으면 그 줄만, 없으면 전체를 위에서부터 차례로 실행"));
         RunButton.Click += (_, _) => Run();
-        var history = RedisUi.Btn("🕘", () => { }, tip: Tr("이전 명령을 편집기에 넣기"));
+        var history = RedisUi.Btn("", () => { }, tip: Tr("이전 명령을 편집기에 넣기"));
+        history.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History);
         history.Click += (_, _) =>
         {
             var items = new List<Control>();
@@ -832,7 +833,7 @@ public sealed class RedisConsoleView : UserControl
 
     private void UpdateState()
     {
-        RunButton.Content = Glyphs.Run + " " + (HasSelection ? Tr("선택 실행") : Tr("실행"));
+        RunButton.Content = GodDB.App.Controls.SymbolIcon.WithText(GodDB.App.Controls.Symbol.Play, HasSelection ? Tr("선택 실행") : Tr("실행"));
         RunButton.IsEnabled = !_ws.ConsoleRunning && RedisText.ScriptLines(TextToRun).Count > 0;
         _running.IsVisible = _ws.ConsoleRunning;
         _db.Text = $"db{_ws.Db}";

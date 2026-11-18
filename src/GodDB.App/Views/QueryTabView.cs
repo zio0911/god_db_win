@@ -111,18 +111,18 @@ public sealed class QueryTabView : UserControl
             Child = Q.H(6, new TextBlock { Text = "⚠", Foreground = Brushes.White, FontSize = 11 }, _bannerText),
         };
 
-        _run = Q.B(Glyphs.Run + " " + Tr("실행"), () => Run(explain: false), Tr("선택 영역만 실행, 선택이 없으면 커서가 있는 문장(강조된 문장)만 실행 (Ctrl+Enter)"), "accent");
-        _runAll = Q.B(Glyphs.RunAll + " " + Tr("전체 실행"), () => Run(explain: false, all: true), Tr("편집기의 모든 문장을 위에서부터 실행 (Ctrl+Alt+Enter)"));
-        _cancel = Q.B(Glyphs.Stop + " " + Tr("취소"), Cancel, Tr("실행 중인 쿼리 멈추기 (Ctrl+.)"));
+        _run = Q.B(Symbol.Play, Tr("실행"), () => Run(explain: false), Tr("선택 영역만 실행, 선택이 없으면 커서가 있는 문장(강조된 문장)만 실행 (Ctrl+Enter)"), "accent");
+        _runAll = Q.B(Symbol.Forward, Tr("전체 실행"), () => Run(explain: false, all: true), Tr("편집기의 모든 문장을 위에서부터 실행 (Ctrl+Alt+Enter)"));
+        _cancel = Q.B(Symbol.Stop, Tr("취소"), Cancel, Tr("실행 중인 쿼리 멈추기 (Ctrl+.)"));
         _cancel.Background = Q.Red;
         _cancel.Foreground = Brushes.White;
-        _explain = Q.B("⋔ " + Tr("실행 계획"), () => Run(explain: true), Tr("EXPLAIN 으로 실행 계획 보기 (Ctrl+Shift+Enter)"));
-        _tune = Q.B(Glyphs.Sparkles + " " + Tr("AI 튜닝"), Tune, null);
+        _explain = Q.B(Symbol.Plan, Tr("실행 계획"), () => Run(explain: true), Tr("EXPLAIN 으로 실행 계획 보기 (Ctrl+Shift+Enter)"));
+        _tune = Q.B(Symbol.Sparkles, Tr("AI 튜닝"), Tune, null);
         _tune.Foreground = Q.Purple;
         ToolTip.SetShowOnDisabled(_tune, true);
-        _refreshSource = Q.B(Glyphs.Refresh + " " + Tr("생성문 새로고침"), () => { if (_tab is { } t) _app.Fire(() => _app.RefreshSourceAsync(t.Id)); },
+        _refreshSource = Q.B(Symbol.Refresh, Tr("생성문 새로고침"), () => { if (_tab is { } t) _app.Fire(() => _app.RefreshSourceAsync(t.Id)); },
             Tr("DB 에서 생성문(정의)을 다시 읽어 편집기 내용을 바꿔요"));
-        var history = Q.B("🕘 " + Tr("히스토리"), () => _app.ShowHistory = true, Tr("실행한 쿼리 다시 찾기 (Ctrl+Y)"));
+        var history = Q.B(Symbol.History, Tr("히스토리"), () => _app.ShowHistory = true, Tr("실행한 쿼리 다시 찾기 (Ctrl+Y)"));
 
         // 좁아져도 선택한 값(500 등)은 항상 보이게: 이름표만 compact 에서 숨기고 선택 상자는 줄이지 않는다 (Mac minWidth 72)
         _limit = new ComboBox { MinWidth = 72, VerticalAlignment = VerticalAlignment.Center };

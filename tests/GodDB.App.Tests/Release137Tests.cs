@@ -173,7 +173,7 @@ public class QueryToolbarTests
         var view = new QueryTabView(new TestEnv().NewApp());
         Assert.Equal("선택 영역만 실행, 선택이 없으면 커서가 있는 문장(강조된 문장)만 실행 (Ctrl+Enter)", ToolTip.GetTip(view.RunButton));
         Assert.Equal("편집기의 모든 문장을 위에서부터 실행 (Ctrl+Alt+Enter)", ToolTip.GetTip(view.RunAllButton));
-        Assert.Contains("전체 실행", view.RunAllButton.Content?.ToString());
+        Assert.Contains(((Avalonia.Controls.StackPanel)view.RunAllButton.Content!).Children.OfType<Avalonia.Controls.TextBlock>(), t => t.Text == "전체 실행");
         Assert.Equal(72, view.LimitPicker.MinWidth);
     });
 
@@ -544,4 +544,37 @@ public class TableCellsIconTests
         Assert.Contains("TableCellsIcon", xaml);
         Assert.DoesNotContain("Text=\"▦\"", xaml);
     });
+}
+
+/// 도구 막대 아이콘: 글자 기호(이모지처럼 그려짐) 대신 벡터 아이콘 + 글자, 좁으면 글자만 숨김
+public class ToolbarSymbolTests
+{
+    [Fact]
+    public Task ToolbarButtonsUseVectorSymbols() => UiThread.Run(() =>
+    {
+        foreach (var s in Enum.GetValues<GodDB.App.Controls.Symbol>())
+        {
+            var b = GodDB.App.Views.Q.B(s, "x", () => { });
+            var panel = Assert.IsType<Avalonia.Controls.StackPanel>(b.Content);
+            Assert.IsType<GodDB.App.Controls.SymbolIcon>(panel.Children[0]);
+            Assert.Contains("label", ((Avalonia.Controls.TextBlock)panel.Children[1]).Classes);
+        }
+        var src = File.ReadAllText(FindRepoFile("src/GodDB.App/Views/QueryTabView.cs"));
+        foreach (var emoji in new[] { "🕘", "⏩", "⋔ " }) Assert.DoesNotContain(emoji, src);
+    });
+
+    [Fact]
+    public void TableTreeReceivesHandledDoubleTaps()
+    {
+        // TreeViewItem 이 더블클릭을 Handled 로 표시하므로 handledEventsToo 로 받아야 테이블 데이터가 열린다
+        var src = File.ReadAllText(FindRepoFile("src/GodDB.App/Views/SidebarView.axaml.cs"));
+        Assert.Contains("TableTree.AddHandler(DoubleTappedEvent, OnTableDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true)", src);
+    }
+
+    internal static string FindRepoFile(string rel)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "VERSION"))) dir = dir.Parent;
+        return Path.Combine(dir!.FullName, rel);
+    }
 }
