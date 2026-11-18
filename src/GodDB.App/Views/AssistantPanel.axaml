@@ -1,8 +1,63 @@
-<!-- 메인 창 오른쪽 AI 어시스턴트 패널 (AI 어시스턴트 포팅에서 바꾼다). DataContext = AppState -->
+<!-- 메인 창 오른쪽 AI 어시스턴트 패널 (Mac AssistantPanel). DataContext = AppState (메인 창이 넣는다).
+     범위(접속·DB / 모델)별 대화, 함께 보낼 정보, 자주 쓰는 질문, 스트리밍 답. 대화 내용은 코드에서 그린다. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:l="using:GodDB.App.Infrastructure"
              x:Class="GodDB.App.Views.AssistantPanel"
-             x:DataType="vm:AppState">
-  <TextBlock Text="AI 어시스턴트 (작업 중)" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="secondary"/>
+             x:DataType="vm:AppState"
+             Background="{DynamicResource PanelBackground}">
+  <DockPanel>
+    <!-- 머리: 제목 · 새 대화 · 이전 대화 · 닫기 -->
+    <Border DockPanel.Dock="Top" Padding="10" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Text="✨" Foreground="{DynamicResource PurpleBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Classes="headline" Text="{l:T AI 어시스턴트}"/>
+          <TextBlock x:Name="ScopeTitle" Classes="caption" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+          <Button x:Name="NewChat" Classes="hover" Content="＋💬" ToolTip.Tip="{l:T '새 대화 (지금 대화는 기록에 남아요)'}"/>
+          <Button x:Name="HistoryButton" Classes="hover" Content="🕘" ToolTip.Tip="{l:T '이전 대화 (90일 보관)'}"/>
+          <Button x:Name="ClosePanel" Classes="hover" Content="⇥" ToolTip.Tip="{l:T 패널 닫기}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- 이번 질문에 함께 보낼 것 -->
+    <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="caption" FontWeight="SemiBold" Text="{l:T 함께 보낼 정보}" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="1" x:Name="IncludeSql" Content="{l:T 편집기 SQL}" FontSize="11" MinHeight="20"
+                    ToolTip.Tip="{l:T '지금 쿼리 탭의 SQL 과 마지막 오류를 함께 보내요'}"/>
+        </Grid>
+        <StackPanel x:Name="Chips" Spacing="3"/>
+      </StackPanel>
+    </Border>
+
+    <!-- 입력 -->
+    <Border DockPanel.Dock="Bottom" Padding="10" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0">
+      <StackPanel Spacing="6">
+        <Grid x:Name="HintRow" ColumnDefinitions="*,Auto" IsVisible="False">
+          <TextBlock x:Name="HintText" Classes="caption" Foreground="{DynamicResource OrangeBrush}" VerticalAlignment="Center"/>
+          <Button Grid.Column="1" x:Name="HintFix" Classes="link" FontSize="11"/>
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+          <Button x:Name="QuickMenu" Classes="hover" Content="⚡" VerticalAlignment="Bottom" ToolTip.Tip="{l:T 자주 쓰는 질문}"/>
+          <TextBox Grid.Column="1" x:Name="InputBox" PlaceholderText="{l:T 질문을 입력하고 Enter}" TextWrapping="Wrap" MaxHeight="120"/>
+          <Panel Grid.Column="2" VerticalAlignment="Bottom">
+            <Button x:Name="SendButton" Classes="hover" Content="⬆" ToolTip.Tip="{l:T 보내기}"/>
+            <Button x:Name="StopButton" Classes="hover" Content="■" ToolTip.Tip="{l:T 취소}" IsVisible="False"/>
+          </Panel>
+        </Grid>
+        <TextBlock Classes="caption" FontSize="10" Text="{l:T '구조·코멘트·통계·SQL 만 로컬 Ollama 에 보내요. 데이터 행은 보내지 않아요.'}"/>
+      </StackPanel>
+    </Border>
+
+    <!-- 대화 -->
+    <ScrollViewer x:Name="TranscriptScroll" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel x:Name="Transcript" Margin="10" Spacing="10"/>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>
