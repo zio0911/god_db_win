@@ -6,44 +6,7 @@ namespace GodDB.App.ViewModels;
 // AppState 가 쓰는 멤버만 먼저 둔다. 채우는 쪽은 이 파일의 클래스를 자기 파일로 옮겨 넓히면 된다
 // (이름 · 이미 있는 멤버의 뜻은 바꾸지 말 것).
 
-/// Redis 접속 하나의 화면 상태 (키 목록, 선택한 키, 콘솔, Pub/Sub, Streams, 서버 정보) — Redis 화면 포팅에서 채운다.
-public partial class RedisWorkspace : ObservableObject
-{
-    public Guid ProfileId { get; }
-    public RedisSession Session { get; }
-    public AppState? App { get; }
-
-    public RedisWorkspace(Guid profileId, RedisSession session, AppState? app)
-    {
-        ProfileId = profileId;
-        Session = session;
-        App = app;
-    }
-
-    public string Name => Session.Profile.Name;
-    public bool ReadOnly => Session.Profile.ReadOnly;
-
-    /// Cluster / Sentinel 표시 ("Cluster · 마스터 3개")
-    [ObservableProperty] private string _topologyText = "";
-    /// Cluster 마스터 노드들 (서버 정보에서 노드 고르기)
-    [ObservableProperty] private IReadOnlyList<string> _nodes = [];
-
-    public virtual Task LoadTopologyAsync()
-    {
-        TopologyText = Session.TopologyText;
-        Nodes = Session.MasterNodes;
-        return Task.CompletedTask;
-    }
-
-    /// 사이드바 DB 목록 (Redis 화면 포팅에서 채운다)
-    public virtual Task LoadDatabasesAsync() => Task.CompletedTask;
-
-    /// 키 목록 다시 읽기 (Redis 화면 포팅에서 채운다)
-    public virtual Task ReloadKeysAsync() => Task.CompletedTask;
-
-    /// 자동 새로고침 · Pub/Sub 구독 등을 멈춘다 (Redis 화면 포팅에서 채운다)
-    public virtual Task CloseAsync() => Task.CompletedTask;
-}
+// RedisWorkspace 는 RedisWorkspace.cs 로 옮김 (Redis 화면 포팅)
 
 /// 메인 창 오른쪽 AI 어시스턴트 상태: 범위(접속·DB / 모델)별 대화, 테이블 통계 캐시
 public sealed partial class AssistantState : ObservableObject
