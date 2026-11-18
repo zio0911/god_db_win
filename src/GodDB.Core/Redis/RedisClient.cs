@@ -22,6 +22,8 @@ public sealed class RedisConnection : IAsyncDisposable
         public string? Password { get; init; }
         public int Database { get; init; }
         public string ClientName { get; init; } = "GodDB";
+        /// 연결 과정 명령(AUTH · SELECT 등)의 응답 제한
+        public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(10);
     }
 
     private readonly TcpClient _tcp;
@@ -66,11 +68,22 @@ public sealed class RedisConnection : IAsyncDisposable
                 {
                     // 터널 경유 시 호스트명이 127.0.0.1 이 되어 인증서 검증이 불가하므로 암호화만 사용한다 (Mac 판과 같음).
                     var ssl = new SslStream(stream, false, (_, _, _, _) => true);
-                    await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                    // TLS 인사도 연결 과정이라 같은 응답 제한을 둔다 (Mac 판은 NIO 가 첫 명령과 함께 처리해서 AUTH 제한에 포함됨)
+                    using var tlsTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    tlsTimeout.CancelAfter(o.Timeout);
+                    try
                     {
-                        TargetHost = o.ServerName ?? "",
-                        RemoteCertificateValidationCallback = (_, _, _, _) => true,
-                    }, ct);
+                        await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                        {
+                            TargetHost = o.ServerName ?? "",
+                            RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                        }, tlsTimeout.Token);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        ssl.Dispose();
+                        throw new RedisTimeoutException(Seconds(o.Timeout));
+                    }
                     stream = ssl;
                 }
                 return new RedisConnection(tcp, stream);
@@ -85,11 +98,12 @@ public sealed class RedisConnection : IAsyncDisposable
         {
             if (!string.IsNullOrEmpty(o.Password))
             {
-                if (string.IsNullOrEmpty(o.Username)) await conn.SendAsync(["AUTH", o.Password], ct);
-                else await conn.SendAsync(["AUTH", o.Username, o.Password], ct);
+                if (string.IsNullOrEmpty(o.Username)) await conn.SendAsync(["AUTH", o.Password], o.Timeout, ct);
+                else await conn.SendAsync(["AUTH", o.Username, o.Password], o.Timeout, ct);
             }
-            if (o.Database != 0) await conn.SendAsync(["SELECT", o.Database.ToString(CultureInfo.InvariantCulture)], ct);
-            try { await conn.SendAsync(["CLIENT", "SETNAME", o.ClientName], ct); } catch (RedisServerException) { }
+            if (o.Database != 0) await conn.SendAsync(["SELECT", o.Database.ToString(CultureInfo.InvariantCulture)], o.Timeout, ct);
+            // 이름 붙이기를 막은 서버(권한 등)는 무시. 시간 초과 · 연결 끊김은 실패로 본다
+            try { await conn.SendAsync(["CLIENT", "SETNAME", o.ClientName], o.Timeout, ct); } catch (RedisServerException) { }
         }
         catch
         {
@@ -101,22 +115,41 @@ public sealed class RedisConnection : IAsyncDisposable
 
     /// 명령 하나를 보내고 응답을 받는다. 서버 오류(-ERR …)는 RedisServerException 으로 던진다.
     public Task<RespValue> SendAsync(IReadOnlyList<string> args, CancellationToken ct = default) =>
-        SendBytesAsync(args.Select(a => Encoding.UTF8.GetBytes(a)).ToList(), ct);
+        SendBytesAsync(args.Select(a => Encoding.UTF8.GetBytes(a)).ToList(), null, ct);
 
-    public async Task<RespValue> SendBytesAsync(IReadOnlyList<byte[]> args, CancellationToken ct = default)
+    /// timeout: 이 시간 안에 응답이 없으면 연결을 닫고 RedisTimeoutException (null 이면 제한 없음 — BLPOP 같은 콘솔 명령)
+    public Task<RespValue> SendAsync(IReadOnlyList<string> args, TimeSpan? timeout, CancellationToken ct = default) =>
+        SendBytesAsync(args.Select(a => Encoding.UTF8.GetBytes(a)).ToList(), timeout, ct);
+
+    public async Task<RespValue> SendBytesAsync(IReadOnlyList<byte[]> args, CancellationToken ct = default) =>
+        await SendBytesAsync(args, null, ct);
+
+    public async Task<RespValue> SendBytesAsync(IReadOnlyList<byte[]> args, TimeSpan? timeout, CancellationToken ct = default)
     {
-        var v = await RawAsync(args, ct);
+        var v = await RawAsync(args, timeout, ct);
         if (v.Kind == RespKind.Error) throw new RedisServerException(v.Text!);
         return v;
     }
 
     /// 오류 응답도 값으로 돌려준다 (콘솔용)
-    public async Task<RespValue> RawAsync(IReadOnlyList<byte[]> args, CancellationToken ct = default)
+    public Task<RespValue> RawAsync(IReadOnlyList<byte[]> args, CancellationToken ct = default) => RawAsync(args, null, ct);
+
+    public async Task<RespValue> RawAsync(IReadOnlyList<byte[]> args, TimeSpan? timeout, CancellationToken ct = default)
     {
         var tcs = new TaskCompletionSource<RespValue>(TaskCreationOptions.RunContinuationsAsynchronously);
         await WriteAsync(args, tcs, ct);
-        return await tcs.Task.WaitAsync(ct);
+        if (timeout is not { } limit) return await tcs.Task.WaitAsync(ct);
+        try { return await tcs.Task.WaitAsync(limit, ct); }
+        catch (TimeoutException)
+        {
+            // 응답이 없으면 대기 중인 요청을 모두 실패시키고 연결을 닫는다
+            var error = new RedisTimeoutException(Seconds(limit));
+            Fail(error);
+            throw error;
+        }
     }
+
+    private static int Seconds(TimeSpan t) => (int)t.TotalSeconds;
 
     internal Task<RespValue> RawAsync(IReadOnlyList<string> args, CancellationToken ct = default) =>
         RawAsync(args.Select(a => Encoding.UTF8.GetBytes(a)).ToList(), ct);
