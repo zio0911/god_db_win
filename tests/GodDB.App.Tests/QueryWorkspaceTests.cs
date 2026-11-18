@@ -655,3 +655,26 @@ public class QueryWorkspaceViewTests
         Assert.Equal(typeof(TableActionSheet), SheetRegistry.Sheets[nameof(AppState.TableAction)]);
     });
 }
+
+/// 화면 확인에서 찾은 문제: Redis 영역이 SQL 접속 · 미접속에도 보이던 것 (헤드리스에서는 재현되지 않아 실제 앱으로도 확인)
+public class SidebarRedisVisibilityTests
+{
+    [Fact]
+    public void RedisSectionHiddenWhenNotRedis() => UiThread.Run(() =>
+    {
+        var env = new TestEnv();
+        env.Store.Save([TestEnv.Profile("a"), TestEnv.Profile("r", GodDB.Core.DatabaseKind.Redis)]);
+        var app = env.NewApp();
+        var view = new GodDB.App.Views.SidebarView { DataContext = new GodDB.App.ViewModels.SidebarViewModel(app) };
+        var window = new Avalonia.Controls.Window { Content = view, Width = 300, Height = 800 };
+        window.Show();
+        var section = view.FindControl<GodDB.App.Views.RedisSidebarSection>("RedisSection")!;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        // 접속 안 됨: Redis 영역도 "키 불러오는 중…" 도 보이면 안 된다
+        Assert.False(section.IsEffectivelyVisible);
+        app.SelectedProfileId = app.Profiles[1].Id;   // Redis 접속을 골라도 연결 전이면 숨김
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(section.IsEffectivelyVisible);
+        window.Close();
+    });
+}

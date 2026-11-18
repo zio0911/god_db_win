@@ -117,7 +117,10 @@
         <SelectableTextBlock Text="{Binding FailureMessage}" IsVisible="{Binding FailureMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
                              FontSize="11" Classes="error" Margin="4,8,4,0"/>
 
-        <v:RedisSidebarSection x:Name="RedisSection" IsVisible="{Binding ShowRedis}"/>
+        <!-- RedisSidebarSection 은 DataContext 가 Redis 작업 공간으로 바뀌므로, 보이기 조건은 바깥 틀에 건다 -->
+        <Panel IsVisible="{Binding ShowRedis}">
+          <v:RedisSidebarSection x:Name="RedisSection"/>
+        </Panel>
 
         <StackPanel IsVisible="{Binding ShowSchema}">
           <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
