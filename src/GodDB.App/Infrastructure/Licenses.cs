@@ -14,6 +14,8 @@ public static class Licenses
 
     public static readonly IReadOnlyList<ThirdPartyLicense> ThirdParty =
     [
+        new("Simple Icons", "16.38.0", "CC0-1.0", "Simple Icons contributors", "https://simpleicons.org", null,
+            "MySQL · PostgreSQL · Redis 로고 (DB 종류 아이콘). 각 로고는 해당 회사의 상표이며 DB 종류를 가리키는 용도로만 써요."),
         new(".NET", "10", "MIT", "Copyright (c) .NET Foundation and Contributors", "https://github.com/dotnet/runtime",
             Mit("Copyright (c) .NET Foundation and Contributors"), "런타임 (앱에 포함해 배포 — PC 에 .NET 을 설치하지 않아도 돼요)"),
         new("Avalonia", "12.1.6", "MIT", "Copyright (c) AvaloniaUI OÜ", "https://github.com/AvaloniaUI/Avalonia",

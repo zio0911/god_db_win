@@ -16,20 +16,35 @@ public class AdaptiveBar : ScrollViewer
     {
         HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden;
         VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+        // StyleKeyOverride 가 ScrollViewer 라 형식 선택자(c|AdaptiveBar)가 맞지 않는다 → 클래스로 고른다
+        Classes.Add("adaptiveBar");
     }
 
     protected override Type StyleKeyOverride => typeof(ScrollViewer);
+
+    /// 글자를 다 보일 때 필요한 폭 (마지막으로 잰 값)
+    private double _fullWidth;
+
+    public bool IsCompact => PseudoClasses.Contains(":compact");
 
     protected override Size MeasureOverride(Size availableSize)
     {
         if (Content is Layoutable child && !double.IsInfinity(availableSize.Width))
         {
-            PseudoClasses.Set(":compact", false);
-            child.Measure(new Size(double.PositiveInfinity, availableSize.Height));
-            var full = child.DesiredSize.Width;
-            if (full > availableSize.Width)
+            // 상태를 바꿀 때만 :compact 를 건드린다 (재기 위해 껐다 켜면 글자 표시가 바뀌어 배치가 끝없이 다시 돈다)
+            if (!IsCompact)
             {
-                PseudoClasses.Set(":compact", true);
+                child.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+                _fullWidth = child.DesiredSize.Width;
+                if (_fullWidth > availableSize.Width)
+                {
+                    PseudoClasses.Set(":compact", true);
+                    child.InvalidateMeasure();
+                }
+            }
+            else if (_fullWidth <= availableSize.Width)
+            {
+                PseudoClasses.Set(":compact", false);
                 child.InvalidateMeasure();
             }
         }
@@ -37,44 +52,49 @@ public class AdaptiveBar : ScrollViewer
     }
 }
 
-/// DB 종류 작은 표시 (MY / PG / MSSQL / RD)
+/// DB 종류 아이콘: 브랜드 로고(MySQL · PostgreSQL · Redis, Simple Icons)를 브랜드 색으로. SQL Server 는 서버 랙 모양. (Mac KindBadge)
 public class KindBadge : Border
 {
     public static readonly StyledProperty<DatabaseKind> KindProperty =
         AvaloniaProperty.Register<KindBadge, DatabaseKind>(nameof(Kind));
 
-    public DatabaseKind Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
+    public static readonly StyledProperty<double> SizeProperty =
+        AvaloniaProperty.Register<KindBadge, double>(nameof(Size), 16);
 
-    private readonly TextBlock _text = new() { FontSize = 9, FontWeight = FontWeight.SemiBold };
+    public DatabaseKind Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
+    public double Size { get => GetValue(SizeProperty); set => SetValue(SizeProperty, value); }
+
+    private readonly Avalonia.Controls.Shapes.Path _logo = new() { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+
+    /// 그리는 로고 모양 (테스트용)
+    public Geometry? Logo => _logo.Data;
+    public IBrush? LogoBrush => _logo.Fill;
 
     public KindBadge()
     {
-        Classes.Add("badge");
-        Child = _text;
+        VerticalAlignment = VerticalAlignment.Center;
+        Background = Brushes.Transparent;
+        Child = _logo;
         Refresh();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == KindProperty) Refresh();
+        if (change.Property == KindProperty || change.Property == SizeProperty) Refresh();
     }
 
-    public static Color ColorOf(DatabaseKind kind) => kind switch
-    {
-        DatabaseKind.Mysql => Color.Parse("#FF9500"),
-        DatabaseKind.Postgres => Color.Parse("#0A84FF"),
-        DatabaseKind.Mssql => Color.Parse("#AF52DE"),
-        _ => Color.Parse("#FF3B30"),
-    };
+    public static Color ColorOf(DatabaseKind kind) => BrandLogo.ColorOf(kind);
 
     private void Refresh()
     {
-        var c = ColorOf(Kind);
-        _text.Text = Kind.Badge();
-        _text.Foreground = new SolidColorBrush(c);
-        Background = new SolidColorBrush(c, 0.12);
+        Width = Height = Size;
+        // SQL Server 랙 모양은 SF Symbol 처럼 글자 크기의 0.78 정도로
+        _logo.Width = _logo.Height = Kind == DatabaseKind.Mssql ? Size * 0.78 : Size;
+        _logo.Data = BrandLogo.Path(Kind);
+        _logo.Fill = new SolidColorBrush(ColorOf(Kind));
         ToolTip.SetTip(this, Kind.Title());
+        Avalonia.Automation.AutomationProperties.SetName(this, Kind.Title());
     }
 }
 

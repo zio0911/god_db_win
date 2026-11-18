@@ -5,6 +5,7 @@
              xmlns:vm="using:GodDB.App.ViewModels"
              xmlns:v="using:GodDB.App.Views"
              xmlns:l="using:GodDB.App.Infrastructure"
+             xmlns:c="using:GodDB.App.Controls"
              xmlns:schema="using:GodDB.Core.Schema"
              x:Class="GodDB.App.Views.CompareView"
              x:DataType="vm:AppState">
@@ -20,12 +21,19 @@
     <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="10">
       <Grid ColumnDefinitions="Auto,*,170,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
         <TextBlock Classes="secondary" Text="{l:T 기준}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-        <ComboBox Grid.Column="1" x:Name="SourcePicker" MinWidth="160" HorizontalAlignment="Stretch"
-                  ItemsSource="{Binding Choices}" SelectedItem="{Binding Source}" ToolTip.Tip="{Binding Source.Name}"/>
+        <!-- [로고] 이름 · 환경 목록 + 고른 접속의 환경 표시 (Mac #101) -->
+        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <ComboBox x:Name="SourcePicker" MinWidth="160" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Choices}" SelectedItem="{Binding Source}" ToolTip.Tip="{Binding Source.Tip}"/>
+          <c:EnvironmentBadge Grid.Column="1" x:Name="SourceEnv" Environment="{Binding Source.Environment, FallbackValue={x:Static vm:CompareViewModel.NoEnvironment}}"/>
+        </Grid>
         <TextBox Grid.Column="2" x:Name="SourceDbBox" Text="{Binding SourceDb}" PlaceholderText="{l:T 'DB/스키마 (비우면 기본)'}"/>
         <TextBlock Grid.Row="1" Classes="secondary" Text="{l:T 대상}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="TargetPicker" MinWidth="160" HorizontalAlignment="Stretch"
-                  ItemsSource="{Binding Choices}" SelectedItem="{Binding Target}" ToolTip.Tip="{Binding Target.Name}"/>
+        <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <ComboBox x:Name="TargetPicker" MinWidth="160" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Choices}" SelectedItem="{Binding Target}" ToolTip.Tip="{Binding Target.Tip}"/>
+          <c:EnvironmentBadge Grid.Column="1" x:Name="TargetEnv" Environment="{Binding Target.Environment, FallbackValue={x:Static vm:CompareViewModel.NoEnvironment}}"/>
+        </Grid>
         <TextBox Grid.Row="1" Grid.Column="2" x:Name="TargetDbBox" Text="{Binding TargetDb}" PlaceholderText="{l:T 'DB/스키마 (비우면 기본)'}"/>
         <Button Grid.Column="3" Grid.RowSpan="2" x:Name="CompareButton" Classes="accent" VerticalAlignment="Center" Margin="4,0,0,0"
                 Command="{Binding CompareCommand}">
