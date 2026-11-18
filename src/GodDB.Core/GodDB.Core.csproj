@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>GodDB.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GodDB.Core.Tests" />
+    <InternalsVisibleTo Include="GodDB.Integration.Tests" />
+  </ItemGroup>
+</Project>

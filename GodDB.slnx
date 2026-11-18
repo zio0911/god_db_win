@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GodDB.App/GodDB.App.csproj" />
+    <Project Path="src/GodDB.Core/GodDB.Core.csproj" />
+    <Project Path="src/GodDB.Platform.Windows/GodDB.Platform.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GodDB.Core.Tests/GodDB.Core.Tests.csproj" />
+    <Project Path="tests/GodDB.Integration.Tests/GodDB.Integration.Tests.csproj" />
+  </Folder>
+</Solution>

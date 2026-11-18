@@ -1,0 +1,110 @@
+name: Release
+
+# v1.2.3 태그를 푸시하면: `release` 환경 승인 대기 → 빌드(win-x64) → (선택) 코드 서명
+#   → Velopack 패키지(Setup.exe · 포터블 zip · 업데이트 파일) → GitHub 릴리스
+# 업데이트 서버는 없다. 앱은 GitHub 릴리스의 Velopack 파일을 읽는다.
+# 테스트는 다시 돌리지 않는다 — 태그에 들어간 코드는 PR 에서 이미 CI 를 통과했다.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "다시 만들 태그 (예: v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    environment: release
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      HAS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: 버전 확인 (태그 = VERSION 파일)
+        shell: bash
+        run: |
+          V="${TAG#v}"
+          F="$(tr -d '\r\n' < VERSION)"
+          if [[ "$V" != "$F" ]]; then echo "태그 $TAG 와 VERSION 파일($F)이 달라요"; exit 1; fi
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: 빌드 (win-x64, self-contained)
+        run: dotnet publish src/GodDB.App/GodDB.App.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained -o publish
+
+      - name: 회사 정보 확인
+        shell: bash
+        env:
+          FORBIDDEN: ${{ secrets.FORBIDDEN_WORDS_REGEX }}
+        run: |
+          if [[ -n "$FORBIDDEN" ]] && grep -rqaiE "$FORBIDDEN" publish/GodDB.dll publish/GodDB.Core.dll; then
+            echo "금지 단어가 앱에 들어 있어요"; exit 1
+          fi
+
+      - name: Velopack 도구
+        run: dotnet tool install -g vpk
+
+      - name: 이전 릴리스 받기 (델타 업데이트용)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token "$GH_TOKEN" || true
+
+      # 코드 서명 (선택): Azure Trusted Signing 비밀 값이 있을 때만 서명한다. 없으면 서명 없이 만든다.
+      - name: Azure 로그인 (코드 서명)
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 패키지 (Setup.exe · zip · 업데이트 파일)
+        shell: bash
+        env:
+          SIGN_METADATA: ${{ secrets.AZURE_SIGNING_METADATA_JSON }}
+        run: |
+          ARGS=(pack --packId GodDB --packVersion "$APP_VERSION" --packDir publish --mainExe GodDB.exe
+                --packTitle GodDB --packAuthors zio0911 --outputDir Releases)
+          if [[ -n "$SIGN_METADATA" ]]; then
+            printf '%s' "$SIGN_METADATA" > "$RUNNER_TEMP/signing.json"
+            ARGS+=(--azureTrustedSignFile "$RUNNER_TEMP/signing.json")
+            echo "코드 서명: Azure Trusted Signing"
+          else
+            echo "::warning::코드 서명 없이 만들어요 (처음 실행 시 SmartScreen 경고)"
+          fi
+          vpk "${ARGS[@]}"
+          ls -la Releases
+
+      - name: 릴리스 노트
+        shell: bash
+        run: ./scripts/release-notes.sh "$APP_VERSION" > "$RUNNER_TEMP/notes.md"
+
+      - name: GitHub 릴리스
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --token "$GH_TOKEN" \
+            --tag "$TAG" --releaseName "GodDB for Windows $APP_VERSION" --publish --merge -o Releases
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
