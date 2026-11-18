@@ -70,7 +70,9 @@ public class ResultExportTests
     public void XlsxIsValidZip()
     {
         var (path, _) = Export(ExportFormat.Xlsx, new ExportOptions { TableName = "a/b:c" }, pages: 3);
-        using var zip = ZipFile.OpenRead(path);
+        // Windows 는 열려 있는 파일을 지울 수 없으므로 zip 을 닫은 뒤 지운다
+        using (var zip = ZipFile.OpenRead(path))
+        {
         string Read(string name)
         {
             using var r = new StreamReader(zip.GetEntry(name)!.Open(), Encoding.UTF8);
@@ -87,6 +89,7 @@ public class ResultExportTests
         Assert.Contains("name=\"a_b_c\"", wb);
         Assert.NotNull(zip.GetEntry("[Content_Types].xml"));
         Assert.Contains("<b/>", Read("xl/styles.xml"));
+        }
         File.Delete(path);
     }
 
