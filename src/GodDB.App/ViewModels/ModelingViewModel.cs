@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,15 +28,40 @@ public sealed partial class ModelRow(DataModel model) : ObservableObject
 
     private static string Describe(DataModel m) => Tr("테이블 %@ · 관계 %@", m.Tables.Count, m.Relations.Count);
 
-    /// Mac: updated.formatted(.relative(presentation: .named)) 대신 간단한 상대 시간
-    public static string Relative(DateTime updated)
+    public static string Relative(DateTime updated) => Relative(updated, DateTime.Now);
+
+    /// Mac `updated.formatted(.relative(presentation: .named))` (RelativeDateTimeFormatter) 와 같은 규칙:
+    /// 두 시각의 달력 차이(년 · 월 · 주 · 일 · 시 · 분 · 초) 중 0 이 아닌 가장 큰 단위 하나로,
+    /// 1일 · 1주 · 1개월 · 1년은 이름(어제 · 지난주 · 지난달 · 작년), 차이가 없으면 '지금'.
+    public static string Relative(DateTime date, DateTime now)
     {
-        var d = DateTime.UtcNow - updated.ToUniversalTime();
-        if (d.TotalMinutes < 1) return Tr("방금");
-        if (d.TotalHours < 1) return Tr("%@분 전", (int)d.TotalMinutes);
-        if (d.TotalDays < 1) return Tr("%@시간 전", (int)d.TotalHours);
-        if (d.TotalDays < 30) return Tr("%@일 전", (int)d.TotalDays);
-        return updated.ToLocalTime().ToString("yyyy-MM-dd");
+        date = date.Kind == DateTimeKind.Utc ? date.ToLocalTime() : date;
+        now = now.Kind == DateTimeKind.Utc ? now.ToLocalTime() : now;
+        var past = date <= now;
+        var (from, to) = past ? (date, now) : (now, date);
+        // 큰 단위부터 넘치지 않을 만큼 더해 간다 (Calendar.dateComponents 와 같게)
+        var years = 0;
+        while (from.AddYears(years + 1) <= to) years++;
+        var cur = from.AddYears(years);
+        var months = 0;
+        while (cur.AddMonths(months + 1) <= to) months++;
+        cur = cur.AddMonths(months);
+        var rest = to - cur;
+        var weeks = (int)(rest.TotalDays / 7);
+        var days = (int)rest.TotalDays - weeks * 7;
+        var hours = rest.Hours;
+        var minutes = rest.Minutes;
+        var seconds = rest.Seconds;
+
+        static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
+        if (years > 0) return years == 1 ? Tr(past ? "작년" : "내년") : Tr(past ? "%@년 전" : "%@년 후", N(years));
+        if (months > 0) return months == 1 ? Tr(past ? "지난달" : "다음 달") : Tr(past ? "%@개월 전" : "%@개월 후", N(months));
+        if (weeks > 0) return weeks == 1 ? Tr(past ? "지난주" : "다음 주") : Tr(past ? "%@주 전" : "%@주 후", N(weeks));
+        if (days > 0) return days == 1 ? Tr(past ? "어제" : "내일") : Tr(past ? "%@일 전" : "%@일 후", N(days));
+        if (hours > 0) return hours == 1 ? Tr(past ? "1시간 전" : "1시간 후") : Tr(past ? "%@시간 전" : "%@시간 후", N(hours));
+        if (minutes > 0) return minutes == 1 ? Tr(past ? "1분 전" : "1분 후") : Tr(past ? "%@분 전" : "%@분 후", N(minutes));
+        if (seconds > 0) return seconds == 1 ? Tr(past ? "1초 전" : "1초 후") : Tr(past ? "%@초 전" : "%@초 후", N(seconds));
+        return Tr("지금");
     }
 }
 
@@ -64,6 +90,8 @@ public sealed partial class ModelingViewModel : ObservableObject
 
     /// 다이어그램을 다시 그려야 할 때 (모든 변경)
     public event Action? Redraw;
+    /// 자동 정렬 직전 · 직후 (다이어그램이 카드를 움직이는 애니메이션용)
+    public event Action? AutoLayoutStarting, AutoLayoutFinished;
     /// 아래 편집기를 다시 만들어야 할 때 (고른 것 · 구조가 바뀜)
     public event Action? EditorRebuild;
 
@@ -247,13 +275,6 @@ public sealed partial class ModelingViewModel : ObservableObject
         AfterAdd();
     }
 
-    /// 예시 모델 (쇼핑몰: 회원 · 주문 · 주문상품 · 상품)
-    public void AddSample()
-    {
-        Workspace.Add(ModelingSample.Model());
-        AfterAdd();
-    }
-
     private void AfterAdd()
     {
         ResetEditorState();
@@ -351,22 +372,15 @@ public sealed partial class ModelingViewModel : ObservableObject
     {
         if (Model is not { } m) return;
         Checkpoint();
+        // Mac withAnimation(.easeInOut(duration: 0.25)) { autoLayout() } — 화면이 지금 자리를 기억했다가 움직인다
+        AutoLayoutStarting?.Invoke();
         ModelDiagram.AutoLayout(m);
+        AutoLayoutFinished?.Invoke();
         Changed();
     }
 
     public void ZoomIn() => Zoom = Math.Min(ModelDiagram.MaxZoom, Math.Round((Zoom + ModelDiagram.ZoomStep) * 10) / 10);
     public void ZoomOut() => Zoom = Math.Max(ModelDiagram.MinZoom, Math.Round((Zoom - ModelDiagram.ZoomStep) * 10) / 10);
-
-    /// 모든 카드가 보이게 확대/축소 (Windows 판 추가: 보이는 영역 크기를 받는다)
-    public void Fit(double viewWidth, double viewHeight)
-    {
-        if (Model is not { } m || m.Tables.Count == 0 || viewWidth <= 0 || viewHeight <= 0) { Zoom = 1; return; }
-        double w = m.Tables.Max(t => t.X + ModelDiagram.CardWidth) + 40;
-        double h = m.Tables.Max(t => t.Y + ModelDiagram.CardHeight(t)) + 40;
-        var z = Math.Min(viewWidth / w, viewHeight / h);
-        Zoom = Math.Clamp(Math.Floor(z * 20) / 20, ModelDiagram.MinZoom, ModelDiagram.MaxZoom);
-    }
 
     public void SetCardColor(Guid tableId, string color)
     {

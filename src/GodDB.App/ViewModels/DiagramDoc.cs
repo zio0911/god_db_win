@@ -98,6 +98,9 @@ public sealed partial class DiagramViewModel : ObservableObject
     /// 배치가 바뀌었다 (카드 끌기 · 자동 정렬)
     public event Action? LayoutChanged;
 
+    /// 자동 정렬 직전 (화면이 지금 자리를 기억해 두고 새 자리로 움직이게)
+    public event Action? Relayouting;
+
     public DiagramViewModel(DiagramDoc doc, DiagramNameMode? nameMode = null)
     {
         Doc = doc;
@@ -134,6 +137,7 @@ public sealed partial class DiagramViewModel : ObservableObject
 
     public void Relayout()
     {
+        Relayouting?.Invoke();
         Frames = DiagramLayout.Frames(Doc.Tables, ShowInferred ? Doc.Inferred : [], cardWidth: CardWidth);
         LayoutChanged?.Invoke();
     }

@@ -26,6 +26,11 @@ public sealed class DiagramCanvas : Panel
     private Point _dragStartOrigin;
     private bool _dragging;
     private readonly RelationLayer _lines;
+    // 자동 정렬 애니메이션 (Mac withAnimation(.easeInOut(duration: 0.25)) { relayout() }):
+    // 카드는 출발 자리 → 새 자리로 움직이고, 관계선(Mac Canvas)은 애니메이션 없이 새 자리로 바로 그린다
+    private readonly Tween _tween = new();
+    private Dictionary<string, Rect>? _animFrom;
+    private double _animT = 1;
 
     public DiagramCanvas(DiagramViewModel vm)
     {
@@ -43,14 +48,43 @@ public sealed class DiagramCanvas : Panel
             Children.Add(card);
         }
         RefreshCards();
+        vm.Relayouting += CaptureForAnimation;
         vm.LayoutChanged += OnLayoutChanged;
         vm.PropertyChanged += OnVmChanged;
     }
 
     public IReadOnlyDictionary<string, DiagramCard> Cards => _cards;
 
+    /// 자동 정렬 애니메이션 (테스트에서 Finish 로 바로 끝낸다)
+    public Tween LayoutTween => _tween;
+
+    private bool _relayouting;
+
+    private void CaptureForAnimation()
+    {
+        // 지금 보이는 자리(움직이는 중이면 그 중간)에서 출발한다
+        var from = new Dictionary<string, Rect>();
+        foreach (var name in _cards.Keys)
+            if (Shown(name) is { } r) from[name] = r;
+        _animFrom = from;
+        _relayouting = true;
+    }
+
+    /// 카드가 지금 그려지는 자리 (여백 포함, 높이 제외)
+    public Rect? Shown(string name)
+    {
+        if (Vm.Frame(name) is not { } f) return null;
+        if (_animFrom == null || !_animFrom.TryGetValue(name, out var a) || _animT >= 1) return f;
+        return new Rect(Tween.Lerp(a.X, f.X, _animT), Tween.Lerp(a.Y, f.Y, _animT), Tween.Lerp(a.Width, f.Width, _animT), f.Height);
+    }
+
     private void OnLayoutChanged()
     {
+        if (_relayouting)
+        {
+            _relayouting = false;
+            _tween.Start(0.25, t => { _animT = t; InvalidateMeasure(); InvalidateArrange(); }, () => _animFrom = null);
+        }
         InvalidateMeasure();
         InvalidateArrange();
         _lines.InvalidateVisual();
@@ -88,6 +122,7 @@ public sealed class DiagramCanvas : Panel
         card.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !Vm.Frames.TryGetValue(name, out var f)) return;
+            _tween.Finish();   // 정렬 애니메이션 중에 잡으면 끝 자리에서 끈다
             _dragTable = name;
             _dragStartPointer = e.GetPosition(this);
             _dragStartOrigin = new Point(f.X, f.Y);
@@ -121,7 +156,7 @@ public sealed class DiagramCanvas : Panel
     {
         foreach (var (name, card) in _cards)
         {
-            var f = Vm.Frame(name);
+            var f = Shown(name);
             card.Measure(f is { } r ? new Size(r.Width, DiagramLayout.CardHeight(card.Table)) : default);
         }
         var size = Vm.ContentSize;
@@ -134,7 +169,7 @@ public sealed class DiagramCanvas : Panel
         _lines.Arrange(new Rect(finalSize));
         foreach (var (name, card) in _cards)
         {
-            if (Vm.Frame(name) is { } f) card.Arrange(new Rect(f.X, f.Y, f.Width, DiagramLayout.CardHeight(card.Table)));
+            if (Shown(name) is { } f) card.Arrange(new Rect(f.X, f.Y, f.Width, DiagramLayout.CardHeight(card.Table)));
             else card.Arrange(default);
         }
         return finalSize;

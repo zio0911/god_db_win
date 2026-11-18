@@ -193,6 +193,55 @@ public class DiagramTests
     }
 
     [Fact]
+    public Task Window_FitAndRelayoutAnimateLikeMac() => UiThread.Run(async () =>
+    {
+        var (app, _) = ConnectedApp();
+        var id = app.MakeDiagram(new HashSet<string> { "tb_order_item" })!.Value;
+        var w = new DiagramWindow(app, id);
+        w.Show();
+        Pump();
+        var vm = w.Vm!;
+        // 처음 열 때 맞추기는 바로
+        Assert.Equal(vm.Zoom, w.ShownZoom);
+        // 확대 단추는 바로 (Mac 도 애니메이션 없음)
+        vm.Zoom = 1;
+        Assert.Equal(1, w.ShownZoom);
+        Assert.False(w.ZoomTween.IsRunning);
+        vm.Zoom = 2;
+        Pump();
+        // 화면에 맞추기: 0.2초 동안 배율이 바뀐다 (Mac withAnimation(.easeInOut(duration: 0.2)) { fit() })
+        w.FitToWindow();
+        Assert.True(vm.Zoom < 2);
+        Assert.True(w.ZoomTween.IsRunning);
+        Assert.Equal(2, w.ShownZoom);
+        await Task.Delay(400);
+        Pump();
+        Assert.False(w.ZoomTween.IsRunning);
+        Assert.Equal(vm.Zoom, w.ShownZoom);
+
+        // 자동 정렬: 카드가 지금 자리에서 새 자리로 0.25초 동안 움직인다
+        var name = "tb_order";
+        vm.Move(name, 2000, 1500);
+        Pump();
+        var before = w.Canvas!.Shown(name)!.Value;
+        vm.Relayout();
+        Assert.Equal(before, w.Canvas.Shown(name)!.Value);
+        await Task.Delay(500);
+        Pump();
+        Assert.Equal(vm.Frame(name), w.Canvas.Shown(name));
+        Assert.Equal(vm.Frame(name)!.Value.X, w.Canvas.Cards[name].Bounds.X);
+
+        // AI 패널: 누르면 서서히 나타난다
+        w.SetAiVisible(true, animate: true);
+        Assert.True(w.AiPanel!.IsVisible);
+        Assert.True(w.AiPanel.Opacity < 1);
+        await Task.Delay(400);
+        Pump();
+        Assert.Equal(1, w.AiPanel.Opacity);
+        w.Close();
+    });
+
+    [Fact]
     public Task Window_ConstructsHeadlessly() => UiThread.Run(() =>
     {
         var (app, _) = ConnectedApp();
@@ -235,6 +284,8 @@ public class DiagramTests
         w.Vm.NameMode = DiagramNameMode.Both;
         w.Vm.ZoomIn();
         w.Vm.Relayout();
+        Assert.True(w.Canvas.LayoutTween.IsRunning);   // Mac withAnimation(0.25): 카드가 움직인다
+        w.Canvas.LayoutTween.Finish();
         Pump();
         Assert.Equal(320, w.Canvas.Cards["tb_order"].Bounds.Width);
         w.Vm.NameMode = DiagramNameMode.Physical;

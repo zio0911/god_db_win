@@ -145,8 +145,8 @@ public sealed partial class CompareViewModel : ObservableObject
     private void OpenInTab()
     {
         if (Report is not { } r || r.FixScript.Length == 0) return;
+        // Mac app.addTab: 연결된 접속이 없으면 상태창에 안내만 남기고 비교 화면에 그대로 있는다 (AddTab 이 성공해야 쿼리 모드로)
         App.AddTab(Tr("-- 스키마 보정 SQL (실행 전 반드시 검토하세요)\n\n") + r.FixScript);
-        App.Mode = MainMode.Query;
     }
 
     [RelayCommand(CanExecute = nameof(CanCompare))]

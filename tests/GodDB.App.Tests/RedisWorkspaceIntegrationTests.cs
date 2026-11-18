@@ -391,8 +391,8 @@ public class RedisWorkspaceIntegrationTests
             var w = new Window { Width = 1100, Height = 700, Content = view };
             w.Show();
             Pump();
-            Assert.Equal(257, view.Entries.List.ItemCount);
-            Assert.Equal(1, view.GroupList.ItemCount);
+            Assert.Equal(257, view.Entries.Table.Count);
+            Assert.Equal(1, view.GroupTable.Count);
             w.Close();
         }
         finally

@@ -23,10 +23,6 @@ namespace GodDB.App.Views;
 
 // Redis 화면의 탭별 내용 (Mac RedisViews.swift). 바뀌는 부분이 많아 코드로 만든다.
 
-/// 표 한 칸 정의
-internal sealed record RedisColumn(string Title, string Width, Func<object, string> Text,
-                                   Func<object, IBrush?>? Brush = null, bool Mono = false, int MaxLines = 1, bool Secondary = false);
-
 /// 작은 화면 도우미 (표 · 막대 · 색)
 internal static class RedisUi
 {
@@ -80,57 +76,20 @@ internal static class RedisUi
         return g;
     }
 
-    /// 머리글 + 목록 (Mac Table). 빈 목록이면 empty 글을 가운데에.
-    public static (Control View, ListBox List, TextBlock Empty) Table(IReadOnlyList<RedisColumn> cols, SelectionMode mode, string empty = "")
+    /// 머리글 없는 목록 (Mac List). 빈 목록이면 empty 글을 가운데에.
+    public static (Control View, ListBox List, TextBlock Empty) PlainList(Func<object, Control> row, SelectionMode mode, string empty = "")
     {
-        var defs = string.Join(",", cols.Select(c => c.Width));
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(defs), ColumnSpacing = 8, Margin = new Thickness(8, 4) };
-        for (var i = 0; i < cols.Count; i++)
-        {
-            var t = Label(cols[i].Title, "secondary");
-            t.FontWeight = FontWeight.SemiBold;
-            t.FontSize = 12;
-            Grid.SetColumn(t, i);
-            header.Children.Add(t);
-        }
         var list = new ListBox { SelectionMode = mode, Background = Brushes.Transparent };
         list.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {
             Setters = { new Setter(TemplatedControl.PaddingProperty, new Thickness(8, 3)), new Setter(Layoutable.MinHeightProperty, 22d) },
         });
-        list.ItemTemplate = new FuncDataTemplate<object>((item, _) =>
-        {
-            var g = new Grid { ColumnDefinitions = new ColumnDefinitions(defs), ColumnSpacing = 8 };
-            if (item == null) return g;
-            for (var i = 0; i < cols.Count; i++)
-            {
-                var c = cols[i];
-                var t = new TextBlock
-                {
-                    Text = c.Text(item),
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxLines = c.MaxLines,
-                    TextWrapping = c.MaxLines > 1 ? TextWrapping.Wrap : TextWrapping.NoWrap,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                if (c.Mono) t.FontFamily = Mono;
-                if (c.Secondary) t.Classes.Add("secondary");
-                if (c.Brush?.Invoke(item) is { } b) t.Foreground = b;
-                ToolTip.SetTip(t, t.Text is { Length: > 40 } s ? s : null);
-                Grid.SetColumn(t, i);
-                g.Children.Add(t);
-            }
-            return g;
-        });
+        list.ItemTemplate = new FuncDataTemplate<object>((item, _) => item == null ? new Panel() : row(item), supportsRecycling: false);
         var emptyText = Label(empty, "secondary");
         emptyText.HorizontalAlignment = HorizontalAlignment.Center;
         emptyText.TextWrapping = TextWrapping.Wrap;
         emptyText.IsHitTestVisible = false;
-        var dock = new DockPanel();
-        DockPanel.SetDock(header, Dock.Top);
-        dock.Children.Add(header);
-        dock.Children.Add(new Panel { Children = { list, emptyText } });
-        return (dock, list, emptyText);
+        return (new Panel { Children = { list, emptyText } }, list, emptyText);
     }
 
     public static void SetItems(ListBox list, TextBlock empty, IEnumerable items)
@@ -189,6 +148,9 @@ public sealed class RedisKeyView : UserControl
     private bool _prettyJson;
     private string? _lastKey, _lastString;
     private (RedisValue, long?)? _shown;
+    // 지금 그린 타입별 내용을 새 값으로 고치는 함수 (null 이면 다시 그린다)
+    private Action<RedisValue>? _updateBody;
+    private Type? _bodyKind;
 
     public RedisKeyView(RedisWorkspace ws)
     {
@@ -261,6 +223,7 @@ public sealed class RedisKeyView : UserControl
             _shown = null;
             _fieldInput = _valueInput = "";
             _prettyJson = false;
+            _updateBody = null;
             Error = null;
         }
         // 값이 실제로 바뀌었을 때만 편집 중인 글을 바꾼다 (Mac onChange(of: stringValue) — 자동 새로고침에 편집이 날아가지 않게)
@@ -268,10 +231,11 @@ public sealed class RedisKeyView : UserControl
         if (str != null && str != _lastString) _draft = str;
         _lastString = str;
         UpdateHeader();
-        if (key == null) { _content.Content = null; _shown = null; return; }
+        if (key == null) { _content.Content = null; _shown = null; _updateBody = null; return; }
         if (_ws.ValueError is { } err)
         {
             _shown = null;
+            _updateBody = null;
             var t = new SelectableTextBlock { Text = err, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16), TextWrapping = TextWrapping.Wrap };
             t.Classes.Add("error");
             _content.Content = t;
@@ -282,11 +246,21 @@ public sealed class RedisKeyView : UserControl
             var shown = (v, _ws.ValueTruncatedTotal);
             if (v is RedisValue.Str && _shown is { } prev && prev.Equals(shown) && _content.Content != null) return;
             _shown = shown;
+            // 같은 키 · 같은 타입을 다시 읽은 것(자동 새로고침, 쓰기 후)이면 표를 그대로 두고 행만 바꾼다
+            // — Mac 은 Table 이 그대로라 선택(행 번호) · 스크롤 · 입력 칸이 유지된다
+            if (v is not RedisValue.Str && _updateBody != null && _bodyKind == v.GetType() && _content.Content != null)
+            {
+                _updateBody(v);
+                return;
+            }
+            _updateBody = null;
+            _bodyKind = v.GetType();
             _content.Content = Body(key, v);
         }
         else
         {
             _shown = null;
+            _updateBody = null;
             _content.Content = new TextBlock { Text = "…", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         }
     }
@@ -366,40 +340,52 @@ public sealed class RedisKeyView : UserControl
             await _ws.DeleteKeyAsync(key);
     }
 
-    private void Run(IReadOnlyList<string> args, string label, ListBox? selection = null) =>
+    private void Run(IReadOnlyList<string> args, string label, RedisTable? selection = null) =>
         _ws.Fire(async () =>
         {
             Error = await _ws.ApplyAsync(args, label);
-            if (Error == null) selection?.SelectedItems?.Clear();
+            if (Error == null) selection?.ClearSelection();   // Mac: if error == nil { selection = [] }
         });
 
-    private sealed record KV(int Index, string A, string B);
+    public sealed record KV(int Index, string A, string B);
 
-    private (Control View, ListBox List) KvTable(IReadOnlyList<KV> rows, string a, string b, string aWidth = "220")
+    /// 두 칸 표 — Mac table(_:a:b:aWidth:): 앞 칸 min/ideal/max = aWidth, aWidth, aWidth*2 (없으면 120/220/600), 값 칸 3줄
+    private RedisTable KvTable(string a, string b, double? aWidth = null)
     {
-        var (view, list, empty) = RedisUi.Table([
-            new RedisColumn(a, aWidth, o => ((KV)o).A),
-            new RedisColumn(b, "*", o => ((KV)o).B, MaxLines: 3),
-        ], SelectionMode.Multiple);
-        RedisUi.SetItems(list, empty, rows);
-        list.ContextRequested += (_, e) =>
+        var table = new RedisTable([
+            new RedisColumn(a, o => ((KV)o).A) { Width = aWidth is { } w ? new RedisWidth(w, w, w * 2) : new RedisWidth(120, 220, 600), Selectable = true },
+            new RedisColumn(b, o => ((KV)o).B) { MaxLines = 3, Selectable = true },
+        ], RedisSelection.Multiple, key: o => ((KV)o).Index);
+        table.Menu = ids =>
         {
-            var sel = list.SelectedItems?.Cast<KV>().OrderBy(r => r.Index).ToList() ?? [];
-            if (sel.Count == 0) return;
-            e.Handled = true;
-            new ContextMenu
-            {
-                ItemsSource = new[]
-                {
-                    RedisUi.Item(Tr("값 복사"), () => RedisUi.Copy(_ws, string.Join("\n", sel.Select(r => r.B)))),
-                    RedisUi.Item(Tr("두 칸 복사 (탭 구분)"), () => RedisUi.Copy(_ws, string.Join("\n", sel.Select(r => r.A + "\t" + r.B)))),
-                },
-            }.Open(list);
+            var rows = ids.Cast<KV>().ToList();
+            return
+            [
+                RedisUi.Item(Tr("값 복사"), () => RedisUi.Copy(_ws, string.Join("\n", rows.Select(r => r.B)))),
+                RedisUi.Item(Tr("두 칸 복사 (탭 구분)"), () => RedisUi.Copy(_ws, string.Join("\n", rows.Select(r => r.A + "\t" + r.B)))),
+            ];
         };
-        return (view, list);
+        return table;
     }
 
-    private static List<int> Selected(ListBox list) => list.SelectedItems?.Cast<KV>().Select(r => r.Index).Order().ToList() ?? [];
+    private static List<int> Selected(RedisTable table) => table.SelectedAs<KV>().Select(r => r.Index).Order().ToList();
+
+    /// 표 아래 '더 불러오기' 단추
+    private static Button MoreButton(Func<Task> load, RedisWorkspace ws)
+    {
+        var b = new Button { Margin = new Thickness(4), Classes = { "hover" } };
+        b.Click += (_, _) => ws.Fire(load);
+        return b;
+    }
+
+    private static void UpdateMore(Button more, int count, long total)
+    {
+        more.IsVisible = count < total;
+        more.Content = Tr("더 불러오기 (%@ / %@)", count.ToString(CultureInfo.InvariantCulture), total.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// 테스트용: 지금 보이는 두 칸 표
+    public RedisTable? KvTableView => (_content.Content as DockPanel)?.Children.OfType<RedisTable>().FirstOrDefault();
 
     private Control EditBar(params Control[] controls)
     {
@@ -443,109 +429,130 @@ public sealed class RedisKeyView : UserControl
             case RedisValue.Hash h:
             {
                 var items = h.Items;
-                var (view, list) = KvTable(items.Select((p, i) => new KV(i, p.Key, p.Value)).ToList(), Tr("필드"), Tr("값"));
+                var table = KvTable(Tr("필드"), Tr("값"));
                 var field = Input(Tr("필드"), true, 180);
                 var value = Input(Tr("값"), false);
-                var save = Ui.Button(Tr("저장 (HSET)"), () => Run(["HSET", key, _fieldInput, _valueInput], Tr("HSET %@ %@", key, _fieldInput), list));
+                var save = Ui.Button(Tr("저장 (HSET)"), () => Run(["HSET", key, _fieldInput, _valueInput], Tr("HSET %@ %@", key, _fieldInput), table));
                 var del = Ui.Button(Tr("선택 삭제 (HDEL)"), () =>
                 {
-                    var fields = Selected(list).Where(i => i < items.Count).Select(i => items[i].Key).ToList();
-                    Run(["HDEL", key, .. fields], Tr("HDEL %@ %@개", key, fields.Count.ToString(CultureInfo.InvariantCulture)), list);
+                    var fields = Selected(table).Where(i => i < items.Count).Select(i => items[i].Key).ToList();
+                    Run(["HDEL", key, .. fields], Tr("HDEL %@ %@개", key, fields.Count.ToString(CultureInfo.InvariantCulture)), table);
                 });
-                void Update() { save.IsEnabled = _fieldInput.Length > 0; del.IsEnabled = Selected(list).Count > 0; }
+                void Update() { save.IsEnabled = _fieldInput.Length > 0; del.IsEnabled = Selected(table).Count > 0; }
                 field.TextChanged += (_, _) => Update();
-                list.SelectionChanged += (_, _) =>
+                table.SelectionChanged += (_, _) =>
                 {
-                    var sel = Selected(list);
-                    if (sel.Count == 1 && sel[0] < items.Count) { field.Text = items[sel[0]].Key; value.Text = items[sel[0]].Value; }
+                    var sel = Selected(table);
+                    if (!table.Restoring && sel.Count == 1 && sel[0] < items.Count) { field.Text = items[sel[0]].Key; value.Text = items[sel[0]].Value; }
                     Update();
                 };
+                void Fill() => table.SetItems(items.Select((p, i) => new KV(i, p.Key, p.Value)));
+                _updateBody = nv => { items = ((RedisValue.Hash)nv).Items; Fill(); Update(); };
+                Fill();
                 Update();
-                return Stacked(view, EditBar(field, value, save, del));
+                return Stacked(table, EditBar(field, value, save, del));
             }
             case RedisValue.List l:
             {
                 var items = l.Items;
-                var (view, list) = KvTable(items.Select((x, i) => new KV(i, i.ToString(CultureInfo.InvariantCulture), x)).ToList(), "#", Tr("값"), "70");
+                var table = KvTable("#", Tr("값"), 70);
                 var value = Input(Tr("값"), false);
                 var lset = Ui.Button(Tr("선택 행 바꾸기 (LSET)"), () =>
                 {
-                    if (Selected(list) is [var i]) Run(["LSET", key, i.ToString(CultureInfo.InvariantCulture), _valueInput], $"LSET {key} {i}", list);
+                    if (Selected(table) is [var i]) Run(["LSET", key, i.ToString(CultureInfo.InvariantCulture), _valueInput], $"LSET {key} {i}", table);
                 });
                 var lrem = Ui.Button(Tr("선택 값 삭제 (LREM)"), () =>
                 {
-                    if (Selected(list) is [var i] && i < items.Count) Run(["LREM", key, "1", items[i]], $"LREM {key}", list);
+                    if (Selected(table) is [var i] && i < items.Count) Run(["LREM", key, "1", items[i]], $"LREM {key}", table);
                 });
-                void Update() { lset.IsEnabled = lrem.IsEnabled = Selected(list).Count == 1; }
-                list.SelectionChanged += (_, _) =>
+                void Update() { lset.IsEnabled = lrem.IsEnabled = Selected(table).Count == 1; }
+                table.SelectionChanged += (_, _) =>
                 {
-                    if (Selected(list) is [var i] && i < items.Count) value.Text = items[i];
+                    if (!table.Restoring && Selected(table) is [var i] && i < items.Count) value.Text = items[i];
                     Update();
                 };
+                var more = MoreButton(_ws.LoadMoreListAsync, _ws);
+                void Fill(RedisValue.List lv)
+                {
+                    table.SetItems(items.Select((x, i) => new KV(i, i.ToString(CultureInfo.InvariantCulture), x)));
+                    UpdateMore(more, items.Count, lv.Total);
+                }
+                _updateBody = nv => { var lv = (RedisValue.List)nv; items = lv.Items; Fill(lv); Update(); };
+                Fill(l);
                 Update();
-                Control? more = items.Count < l.Total
-                    ? new Button { Content = Tr("더 불러오기 (%@ / %@)", items.Count.ToString(CultureInfo.InvariantCulture), l.Total.ToString(CultureInfo.InvariantCulture)), Margin = new Thickness(4), Classes = { "hover" } }
-                    : null;
-                if (more is Button mb) mb.Click += (_, _) => _ws.Fire(_ws.LoadMoreListAsync);
-                return Stacked(view, more, EditBar(value,
-                    Ui.Button("LPUSH", () => Run(["LPUSH", key, _valueInput], $"LPUSH {key}", list)),
-                    Ui.Button("RPUSH", () => Run(["RPUSH", key, _valueInput], $"RPUSH {key}", list)),
+                return Stacked(table, more, EditBar(value,
+                    Ui.Button("LPUSH", () => Run(["LPUSH", key, _valueInput], $"LPUSH {key}", table)),
+                    Ui.Button("RPUSH", () => Run(["RPUSH", key, _valueInput], $"RPUSH {key}", table)),
                     lset, lrem));
             }
             case RedisValue.Set st:
             {
                 var items = st.Items;
-                var (view, list) = KvTable(items.Select((x, i) => new KV(i, (i + 1).ToString(CultureInfo.InvariantCulture), x)).ToList(), "#", Tr("멤버"), "70");
+                var table = KvTable("#", Tr("멤버"), 70);
                 var value = Input(Tr("멤버"), false);
-                var add = Ui.Button(Tr("추가 (SADD)"), () => Run(["SADD", key, _valueInput], $"SADD {key}", list));
+                var add = Ui.Button(Tr("추가 (SADD)"), () => Run(["SADD", key, _valueInput], $"SADD {key}", table));
                 var rem = Ui.Button(Tr("선택 삭제 (SREM)"), () =>
                 {
-                    var ms = Selected(list).Where(i => i < items.Count).Select(i => items[i]).ToList();
-                    Run(["SREM", key, .. ms], Tr("SREM %@ %@개", key, ms.Count.ToString(CultureInfo.InvariantCulture)), list);
+                    var ms = Selected(table).Where(i => i < items.Count).Select(i => items[i]).ToList();
+                    Run(["SREM", key, .. ms], Tr("SREM %@ %@개", key, ms.Count.ToString(CultureInfo.InvariantCulture)), table);
                 });
-                void Update() { add.IsEnabled = _valueInput.Length > 0; rem.IsEnabled = Selected(list).Count > 0; }
+                void Update() { add.IsEnabled = _valueInput.Length > 0; rem.IsEnabled = Selected(table).Count > 0; }
                 value.TextChanged += (_, _) => Update();
-                list.SelectionChanged += (_, _) => Update();
+                table.SelectionChanged += (_, _) => Update();
+                void Fill() => table.SetItems(items.Select((x, i) => new KV(i, (i + 1).ToString(CultureInfo.InvariantCulture), x)));
+                _updateBody = nv => { items = ((RedisValue.Set)nv).Items; Fill(); Update(); };
+                Fill();
                 Update();
-                return Stacked(view, EditBar(value, add, rem));
+                return Stacked(table, EditBar(value, add, rem));
             }
             case RedisValue.Zset z:
             {
                 var items = z.Items;
-                var (view, list) = KvTable(items.Select((p, i) => new KV(i, p.Key, p.Value)).ToList(), Tr("멤버"), Tr("점수 (높은 순)"));
+                var table = KvTable(Tr("멤버"), Tr("점수 (높은 순)"));
                 var member = Input(Tr("멤버"), true);
                 var score = Input(Tr("점수"), false, 120);
-                var add = Ui.Button(Tr("저장 (ZADD)"), () => Run(["ZADD", key, _valueInput, _fieldInput], $"ZADD {key}", list));
+                var add = Ui.Button(Tr("저장 (ZADD)"), () => Run(["ZADD", key, _valueInput, _fieldInput], $"ZADD {key}", table));
                 var rem = Ui.Button(Tr("선택 삭제 (ZREM)"), () =>
                 {
-                    var ms = Selected(list).Where(i => i < items.Count).Select(i => items[i].Key).ToList();
-                    Run(["ZREM", key, .. ms], Tr("ZREM %@ %@개", key, ms.Count.ToString(CultureInfo.InvariantCulture)), list);
+                    var ms = Selected(table).Where(i => i < items.Count).Select(i => items[i].Key).ToList();
+                    Run(["ZREM", key, .. ms], Tr("ZREM %@ %@개", key, ms.Count.ToString(CultureInfo.InvariantCulture)), table);
                 });
                 void Update()
                 {
                     add.IsEnabled = _fieldInput.Length > 0 && double.TryParse(_valueInput, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
-                    rem.IsEnabled = Selected(list).Count > 0;
+                    rem.IsEnabled = Selected(table).Count > 0;
                 }
                 member.TextChanged += (_, _) => Update();
                 score.TextChanged += (_, _) => Update();
-                list.SelectionChanged += (_, _) =>
+                table.SelectionChanged += (_, _) =>
                 {
-                    if (Selected(list) is [var i] && i < items.Count) { member.Text = items[i].Key; score.Text = items[i].Value; }
+                    if (!table.Restoring && Selected(table) is [var i] && i < items.Count) { member.Text = items[i].Key; score.Text = items[i].Value; }
                     Update();
                 };
+                var more = MoreButton(_ws.LoadMoreZsetAsync, _ws);
+                void Fill(RedisValue.Zset zv)
+                {
+                    table.SetItems(items.Select((p, i) => new KV(i, p.Key, p.Value)));
+                    UpdateMore(more, items.Count, zv.Total);
+                }
+                _updateBody = nv => { var zv = (RedisValue.Zset)nv; items = zv.Items; Fill(zv); Update(); };
+                Fill(z);
                 Update();
-                Control? more = items.Count < z.Total
-                    ? new Button { Content = Tr("더 불러오기 (%@ / %@)", items.Count.ToString(CultureInfo.InvariantCulture), z.Total.ToString(CultureInfo.InvariantCulture)), Margin = new Thickness(4), Classes = { "hover" } }
-                    : null;
-                if (more is Button mb) mb.Click += (_, _) => _ws.Fire(_ws.LoadMoreZsetAsync);
-                return Stacked(view, more, EditBar(member, score, add, rem));
+                return Stacked(table, more, EditBar(member, score, add, rem));
             }
             case RedisValue.Stream sv:
             {
                 var table = new StreamEntriesTable(_ws, null);
                 table.SetEntries(sv.Entries);
-                var bar = RedisUi.Row(8, [RedisUi.Label(Tr("최근 %@개", sv.Entries.Count.ToString(CultureInfo.InvariantCulture)), "caption")],
+                var count = RedisUi.Label(Tr("최근 %@개", sv.Entries.Count.ToString(CultureInfo.InvariantCulture)), "caption");
+                var bar = RedisUi.Row(8, [count],
                     [RedisUi.Btn(Tr("Streams 탭에서 열기 (소비자 그룹, 실시간 보기)"), () => _ws.Fire(() => _ws.OpenStreamAsync(key)))]);
+                _updateBody = nv =>
+                {
+                    var entries = ((RedisValue.Stream)nv).Entries;
+                    table.SetEntries(entries);
+                    count.Text = Tr("최근 %@개", entries.Count.ToString(CultureInfo.InvariantCulture));
+                };
                 return Stacked(table, RedisUi.Bar(bar));
             }
             case RedisValue.Other o:
@@ -631,25 +638,20 @@ public sealed class RedisKeyView : UserControl
 /// 스트림 항목 표 (ID · 시각 · 필드) — Mac StreamEntriesTable
 public sealed class StreamEntriesTable : UserControl
 {
-    private readonly ListBox _list;
-    private readonly TextBlock _empty;
     private readonly RedisWorkspace _ws;
 
     public StreamEntriesTable(RedisWorkspace ws, Action<IReadOnlyList<string>>? onDelete)
     {
         _ws = ws;
-        var (view, list, empty) = RedisUi.Table([
-            new RedisColumn("ID", "190", o => ((RedisStreamEntry)o).Id, Mono: true),
-            new RedisColumn(Tr("시각"), "150", o => RedisWorkspace.StreamTime(((RedisStreamEntry)o).Id), Secondary: true),
-            new RedisColumn(Tr("필드"), "*", o => string.Join("  ", ((RedisStreamEntry)o).Fields.Select(f => $"{f.Key}={f.Value}")), MaxLines: 2),
-        ], SelectionMode.Multiple);
-        _list = list;
-        _empty = empty;
-        list.ContextRequested += (_, e) =>
+        // Mac: ID 150/190/260 (고정폭 callout, 글 선택), 시각 120/150/200 (흐림), 필드 2줄 (글 선택). 선택은 ID 묶음.
+        Table = new RedisTable([
+            new RedisColumn("ID", o => ((RedisStreamEntry)o).Id) { Width = new RedisWidth(150, 190, 260), Mono = true, Selectable = true },
+            new RedisColumn(Tr("시각"), o => RedisWorkspace.StreamTime(((RedisStreamEntry)o).Id)) { Width = new RedisWidth(120, 150, 200), Secondary = _ => true },
+            new RedisColumn(Tr("필드"), o => string.Join("  ", ((RedisStreamEntry)o).Fields.Select(f => $"{f.Key}={f.Value}"))) { MaxLines = 2, Selectable = true },
+        ], RedisSelection.Multiple, key: o => ((RedisStreamEntry)o).Id);
+        Table.Menu = ids =>
         {
-            var sel = Selected;
-            if (sel.Count == 0) return;
-            e.Handled = true;
+            var sel = ids.Cast<RedisStreamEntry>().ToList();
             var items = new List<Control>
             {
                 RedisUi.Item(Tr("ID 복사"), () => RedisUi.Copy(_ws, string.Join("\n", sel.Select(x => x.Id).Order(StringComparer.Ordinal)))),
@@ -658,17 +660,18 @@ public sealed class StreamEntriesTable : UserControl
             if (onDelete != null)
             {
                 items.Add(new Separator());
+                // Mac 과 같이 묻지 않고 지운다
                 items.Add(RedisUi.Item(Tr("삭제 (XDEL)"), () => onDelete(sel.Select(x => x.Id).Order(StringComparer.Ordinal).ToList())));
             }
-            new ContextMenu { ItemsSource = items }.Open(list);
+            return items;
         };
-        Content = view;
+        Content = Table;
     }
 
-    public ListBox List => _list;
-    public List<RedisStreamEntry> Selected => _list.SelectedItems?.Cast<RedisStreamEntry>().ToList() ?? [];
+    public RedisTable Table { get; }
+    public List<RedisStreamEntry> Selected => Table.SelectedAs<RedisStreamEntry>();
 
-    public void SetEntries(IEnumerable<RedisStreamEntry> entries) => RedisUi.SetItems(_list, _empty, entries);
+    public void SetEntries(IEnumerable<RedisStreamEntry> entries) => Table.SetItems(entries);
 
     /// 선택한 항목을 JSON 으로 (키 정렬)
     public static string Json(IEnumerable<RedisStreamEntry> entries)
@@ -855,8 +858,7 @@ public sealed class RedisPubSubView : UserControl
     private readonly WrapPanel _chips = new() { Orientation = Orientation.Horizontal };
     private readonly TextBlock _count = RedisUi.Label("", "secondary");
     private readonly SelectableTextBlock _error = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Classes = { "error" } };
-    private readonly ListBox _messages;
-    private readonly TextBlock _messagesEmpty;
+    private readonly RedisTable _messages;
     private readonly ListBox _active;
     private readonly TextBlock _activeEmpty;
     private readonly DispatcherTimer _throttle = new() { Interval = TimeSpan.FromMilliseconds(150) };
@@ -882,21 +884,15 @@ public sealed class RedisPubSubView : UserControl
         Grid.SetColumn(FilterBox, 1);
         filterRow.Margin = new Thickness(8, 4);
 
-        var (mView, mList, mEmpty) = RedisUi.Table([
-            new RedisColumn(Tr("시각"), "100", o => ((RedisPubSubMessage)o).Date.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture), Secondary: true),
-            new RedisColumn(Tr("채널"), "160", o => ((RedisPubSubMessage)o) is { Pattern: { } p } m ? $"{m.Channel}  ({p})" : ((RedisPubSubMessage)o).Channel),
-            new RedisColumn(Tr("메시지"), "*", o => ((RedisPubSubMessage)o) is var m && m.Kind.EndsWith("message", StringComparison.Ordinal) ? m.Payload : $"({m.Kind} · {m.Payload})",
-                            o => ((RedisPubSubMessage)o).Kind.EndsWith("message", StringComparison.Ordinal) ? null : Brushes.Gray, MaxLines: 3),
-        ], SelectionMode.Multiple);
-        _messages = mList;
-        _messagesEmpty = mEmpty;
-        mList.ContextRequested += (_, e) =>
-        {
-            var sel = mList.SelectedItems?.Cast<RedisPubSubMessage>().ToList() ?? [];
-            if (sel.Count == 0) return;
-            e.Handled = true;
-            new ContextMenu { ItemsSource = new[] { RedisUi.Item(Tr("값 복사"), () => RedisUi.Copy(_ws, string.Join("\n", sel.Select(m => m.Payload)))) } }.Open(mList);
-        };
+        // Mac Table(shown): 시각 90/100/130 (흐림), 채널 100/160/300 (패턴은 아래 작은 줄), 메시지 3줄 · 글 선택.
+        // selection 을 묶지 않은 표라 행이 골라지지 않고 행 메뉴도 없다.
+        static bool IsMessage(object o) => ((RedisPubSubMessage)o).Kind.EndsWith("message", StringComparison.Ordinal);
+        _messages = new RedisTable([
+            new RedisColumn(Tr("시각"), o => ((RedisPubSubMessage)o).Date.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)) { Width = new RedisWidth(90, 100, 130), Secondary = _ => true },
+            new RedisColumn(Tr("채널"), o => ((RedisPubSubMessage)o).Channel) { Width = new RedisWidth(100, 160, 300), Sub = o => ((RedisPubSubMessage)o).Pattern },
+            new RedisColumn(Tr("메시지"), o => IsMessage(o) ? ((RedisPubSubMessage)o).Payload : $"({((RedisPubSubMessage)o).Kind} · {((RedisPubSubMessage)o).Payload})")
+                { MaxLines = 3, Selectable = true, Secondary = o => !IsMessage(o) },
+        ], RedisSelection.None);
         var left = new DockPanel { MinWidth = 420 };
         foreach (var c in new Control[] { top, _chips, new Border { Height = 1, Classes = { "divider" } }, filterRow })
         {
@@ -904,7 +900,7 @@ public sealed class RedisPubSubView : UserControl
             left.Children.Add(c);
         }
         _chips.Margin = new Thickness(8, 0, 8, 6);
-        left.Children.Add(mView);
+        left.Children.Add(_messages);
 
         // 오른쪽: PUBLISH · 활성 채널
         PubMessage.Height = 100;
@@ -916,16 +912,31 @@ public sealed class RedisPubSubView : UserControl
         });
         PubChannel.TextChanged += (_, _) => UpdateSend();
         var readOnlyNote = new TextBlock { Text = Tr("읽기전용 접속이라 보낼 수 없어요."), FontSize = 11, Foreground = RedisUi.Orange, IsVisible = ws.ReadOnly, TextWrapping = TextWrapping.Wrap };
-        var (aView, aList, aEmpty) = RedisUi.Table([
-            new RedisColumn(Tr("채널"), "*", o => ((RedisChannelCount)o).Channel),
-            new RedisColumn("", "Auto", o => Tr("구독자 %@", ((RedisChannelCount)o).Subscribers.ToString(CultureInfo.InvariantCulture)), Secondary: true),
-        ], SelectionMode.Single, Tr("없음"));
+        // Mac List: 채널 이름 … 구독자 수(작게, 흐림). 누르면 보낼 채널에 넣고, 메뉴로 구독.
+        var (aView, aList, aEmpty) = RedisUi.PlainList(o =>
+        {
+            var c = (RedisChannelCount)o;
+            var subs = RedisUi.Label(Tr("구독자 %@", c.Subscribers.ToString(CultureInfo.InvariantCulture)), "secondary");
+            subs.FontSize = 11;
+            var name = new TextBlock { Text = c.Channel, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            var row = new DockPanel { Background = Brushes.Transparent };
+            DockPanel.SetDock(subs, Dock.Right);
+            row.Children.Add(subs);
+            row.Children.Add(name);
+            return row;
+        }, SelectionMode.Single, Tr("없음"));
         _active = aList;
         _activeEmpty = aEmpty;
-        aList.SelectionChanged += (_, _) => { if (aList.SelectedItem is RedisChannelCount c) PubChannel.Text = c.Channel; };
+        aList.SelectionChanged += (_, _) =>
+        {
+            // Mac 은 onTapGesture 라 행이 골라진 채로 남지 않는다
+            if (aList.SelectedItem is not RedisChannelCount c) return;
+            PubChannel.Text = c.Channel;
+            aList.SelectedItem = null;
+        };
         aList.ContextRequested += (_, e) =>
         {
-            if (aList.SelectedItem is not RedisChannelCount c) return;
+            if ((e.Source as Control)?.DataContext is not RedisChannelCount c) return;
             e.Handled = true;
             new ContextMenu { ItemsSource = new[] { RedisUi.Item(Tr("구독"), () => _ws.Fire(() => _ws.SubscribeAsync(c.Channel))) } }.Open(aList);
         };
@@ -1024,13 +1035,13 @@ public sealed class RedisPubSubView : UserControl
 
     public void RefreshMessages()
     {
-        RedisUi.SetItems(_messages, _messagesEmpty, Shown);
-        _messagesEmpty.Text = _ws.Subscriber == null ? Tr("채널을 구독하면 들어오는 메시지가 여기에 실시간으로 보여요.") : Tr("메시지를 기다리는 중…");
-        _messagesEmpty.IsVisible = _ws.Messages.Count == 0;
+        _messages.ShowEmpty = _ws.Messages.Count == 0;
+        _messages.EmptyText = _ws.Subscriber == null ? Tr("채널을 구독하면 들어오는 메시지가 여기에 실시간으로 보여요.") : Tr("메시지를 기다리는 중…");
+        _messages.SetItems(Shown);
         _count.Text = Tr("%@건", _ws.Messages.Count(m => m.Kind.EndsWith("message", StringComparison.Ordinal)).ToString(CultureInfo.InvariantCulture));
     }
 
-    public ListBox MessageList => _messages;
+    public RedisTable MessageTable => _messages;
 }
 
 // MARK: - Streams
@@ -1050,8 +1061,7 @@ public sealed class RedisStreamsView : UserControl
     public TextBox AddFields { get; } = RedisUi.Box(Tr("field=value field2=value2"), 320);
     private readonly Button _add;
     private readonly SelectableTextBlock _error = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 0, 8, 4), Classes = { "error" } };
-    private readonly ListBox _groups, _consumers, _pending;
-    private readonly TextBlock _groupsEmpty, _consumersEmpty, _pendingEmpty;
+    private readonly RedisTable _groups, _consumers, _pending;
     private readonly TextBlock _groupTitle = new() { FontSize = 14, FontWeight = FontWeight.SemiBold };
     public TextBox NewGroup { get; } = RedisUi.Box(Tr("새 그룹"));
     private readonly ComboBox _newGroupStart = new() { ItemsSource = new[] { Tr("새 항목부터 ($)"), Tr("처음부터 (0)") }, SelectedIndex = 0 };
@@ -1066,7 +1076,9 @@ public sealed class RedisStreamsView : UserControl
         _ws = ws;
         AddFields.Text = "field=value";
         // 스트림 목록
-        var (kView, kList, kEmpty) = RedisUi.Table([new RedisColumn(Tr("스트림"), "*", o => (string)o)], SelectionMode.Single, Tr("스트림이 없어요."));
+        // Mac List(streamKeys, selection:) — 머리글 없는 목록, 긴 이름은 가운데를 줄임
+        var (kView, kList, kEmpty) = RedisUi.PlainList(o => new TextBlock { Text = (string)o, TextTrimming = TextTrimming.PrefixCharacterEllipsis, VerticalAlignment = VerticalAlignment.Center },
+                                                        SelectionMode.Single, Tr("스트림이 없어요."));
         _keys = kList;
         _keysEmpty = kEmpty;
         kList.SelectionChanged += (_, _) =>
@@ -1111,35 +1123,32 @@ public sealed class RedisStreamsView : UserControl
         entriesPane.Children.Add(Entries);
 
         // 소비자 그룹
-        var (gView, gList, gEmpty) = RedisUi.Table([
-            new RedisColumn(Tr("그룹"), "*", o => ((RedisStreamGroup)o).Name),
-            new RedisColumn(Tr("소비자"), "50", o => ((RedisStreamGroup)o).Consumers.ToString(CultureInfo.InvariantCulture)),
-            new RedisColumn(Tr("대기"), "50", o => ((RedisStreamGroup)o).Pending.ToString(CultureInfo.InvariantCulture), o => ((RedisStreamGroup)o).Pending > 0 ? RedisUi.Orange : Brushes.Gray),
-            new RedisColumn("Lag", "50", o => ((RedisStreamGroup)o).Lag?.ToString(CultureInfo.InvariantCulture) ?? "-"),
-            new RedisColumn(Tr("마지막 전달 ID"), "*", o => ((RedisStreamGroup)o).LastDeliveredId, Mono: true),
-        ], SelectionMode.Single);
-        _groups = gList;
-        _groupsEmpty = gEmpty;
-        gList.SelectionChanged += (_, _) =>
+        // Mac: 그룹 · 소비자(50) · 대기(50, 있으면 주황 · 없으면 흐림) · Lag(50) · 마지막 전달 ID(caption 고정폭). 하나만 고름 (ws.group).
+        _groups = new RedisTable([
+            new RedisColumn(Tr("그룹"), o => ((RedisStreamGroup)o).Name),
+            new RedisColumn(Tr("소비자"), o => ((RedisStreamGroup)o).Consumers.ToString(CultureInfo.InvariantCulture)) { Width = RedisWidth.Fixed(50) },
+            new RedisColumn(Tr("대기"), o => ((RedisStreamGroup)o).Pending.ToString(CultureInfo.InvariantCulture))
+                { Width = RedisWidth.Fixed(50), Brush = o => ((RedisStreamGroup)o).Pending > 0 ? RedisUi.Orange : null, Secondary = o => ((RedisStreamGroup)o).Pending <= 0 },
+            new RedisColumn("Lag", o => ((RedisStreamGroup)o).Lag?.ToString(CultureInfo.InvariantCulture) ?? "-") { Width = RedisWidth.Fixed(50) },
+            new RedisColumn(Tr("마지막 전달 ID"), o => ((RedisStreamGroup)o).LastDeliveredId) { Mono = true, Caption = true },
+        ], RedisSelection.Single, key: o => ((RedisStreamGroup)o).Name);
+        _groups.SelectionChanged += (_, _) =>
         {
-            if (_syncing || gList.SelectedItem is not RedisStreamGroup g || g.Name == _ws.Group) return;
+            if (_syncing || _groups.Restoring || _groups.Grid.SelectedItem is not RedisStreamGroup g || g.Name == _ws.Group) return;
             _ws.Group = g.Name;
             _ws.Fire(_ws.ReloadGroupAsync);
         };
-        gList.ContextRequested += (_, e) =>
+        _groups.Menu = ids =>
         {
-            if (gList.SelectedItem is not RedisStreamGroup g || _ws.ReadOnly || _ws.Stream is not { } key) return;
-            e.Handled = true;
-            new ContextMenu
-            {
-                ItemsSource = new Control[]
-                {
-                    RedisUi.Item(Tr("처음부터 다시 읽기 (SETID 0)"), () => _ws.Fire(async () =>
-                        SetError(await _ws.StreamWriteAsync(["XGROUP", "SETID", key, g.Name, "0"], $"XGROUP SETID {key} {g.Name} 0")))),
-                    RedisUi.Item(Tr("그룹 삭제 (DESTROY)"), () => _ws.Fire(async () =>
-                        SetError(await _ws.StreamWriteAsync(["XGROUP", "DESTROY", key, g.Name], $"XGROUP DESTROY {key} {g.Name}")))),
-                },
-            }.Open(gList);
+            if (ids.FirstOrDefault() is not RedisStreamGroup g || _ws.ReadOnly || _ws.Stream is not { } key) return null;
+            // Mac 과 같이 묻지 않는다
+            return
+            [
+                RedisUi.Item(Tr("처음부터 다시 읽기 (SETID 0)"), () => _ws.Fire(async () =>
+                    SetError(await _ws.StreamWriteAsync(["XGROUP", "SETID", key, g.Name, "0"], $"XGROUP SETID {key} {g.Name} 0")))),
+                RedisUi.Item(Tr("그룹 삭제 (DESTROY)"), () => _ws.Fire(async () =>
+                    SetError(await _ws.StreamWriteAsync(["XGROUP", "DESTROY", key, g.Name], $"XGROUP DESTROY {key} {g.Name}")))),
+            ];
         };
         _create = Ui.Button(Tr("만들기"), () =>
         {
@@ -1164,42 +1173,47 @@ public sealed class RedisStreamsView : UserControl
         DockPanel.SetDock(createRow, Dock.Bottom);
         groupsLeft.Children.Add(gTitle);
         groupsLeft.Children.Add(createRow);
-        groupsLeft.Children.Add(gView);
+        groupsLeft.Children.Add(_groups);
 
-        var (cView, cList, cEmpty) = RedisUi.Table([
-            new RedisColumn(Tr("소비자"), "*", o => ((RedisStreamConsumer)o).Name),
-            new RedisColumn(Tr("대기"), "50", o => ((RedisStreamConsumer)o).Pending.ToString(CultureInfo.InvariantCulture)),
-            new RedisColumn(Tr("유휴"), "80", o => RedisFormat.TtlText(((RedisStreamConsumer)o).IdleMillis)),
-        ], SelectionMode.Single);
-        _consumers = cList;
-        _consumersEmpty = cEmpty;
-        var (pView, pList, pEmpty) = RedisUi.Table([
-            new RedisColumn("ID", "*", o => ((RedisPendingEntry)o).Id, Mono: true),
-            new RedisColumn(Tr("소비자"), "*", o => ((RedisPendingEntry)o).Consumer),
-            new RedisColumn(Tr("유휴"), "80", o => RedisFormat.TtlText(((RedisPendingEntry)o).IdleMillis)),
-            new RedisColumn(Tr("전달 횟수"), "60", o => ((RedisPendingEntry)o).Deliveries.ToString(CultureInfo.InvariantCulture), o => ((RedisPendingEntry)o).Deliveries > 3 ? RedisUi.Red : null),
-        ], SelectionMode.Multiple);
-        _pending = pList;
-        _pendingEmpty = pEmpty;
+        // Mac Table(ws.consumers) — 선택 없음: 소비자 · 대기(50) · 유휴(80)
+        _consumers = new RedisTable([
+            new RedisColumn(Tr("소비자"), o => ((RedisStreamConsumer)o).Name),
+            new RedisColumn(Tr("대기"), o => ((RedisStreamConsumer)o).Pending.ToString(CultureInfo.InvariantCulture)) { Width = RedisWidth.Fixed(50) },
+            new RedisColumn(Tr("유휴"), o => RedisFormat.TtlText(((RedisStreamConsumer)o).IdleMillis)) { Width = RedisWidth.Fixed(80) },
+        ], RedisSelection.None);
+        // Mac Table(ws.pending, selection: Set<String>) — ID(caption 고정폭) · 소비자 · 유휴(80) · 전달 횟수(60, 3 넘으면 빨강)
+        _pending = new RedisTable([
+            new RedisColumn("ID", o => ((RedisPendingEntry)o).Id) { Mono = true, Caption = true },
+            new RedisColumn(Tr("소비자"), o => ((RedisPendingEntry)o).Consumer),
+            new RedisColumn(Tr("유휴"), o => RedisFormat.TtlText(((RedisPendingEntry)o).IdleMillis)) { Width = RedisWidth.Fixed(80) },
+            new RedisColumn(Tr("전달 횟수"), o => ((RedisPendingEntry)o).Deliveries.ToString(CultureInfo.InvariantCulture))
+                { Width = RedisWidth.Fixed(60), Brush = o => ((RedisPendingEntry)o).Deliveries > 3 ? RedisUi.Red : null },
+        ], RedisSelection.Multiple, key: o => ((RedisPendingEntry)o).Id);
         _ack = Ui.Button(Tr("선택 항목 처리 완료 (XACK)"), () =>
         {
             if (_ws.Stream is not { } key || _ws.Group is not { } g) return;
-            var ids = pList.SelectedItems?.Cast<RedisPendingEntry>().Select(p => p.Id).Order(StringComparer.Ordinal).ToList() ?? [];
+            var ids = _pending.SelectedAs<RedisPendingEntry>().Select(p => p.Id).Order(StringComparer.Ordinal).ToList();
             if (ids.Count == 0) return;
-            _ws.Fire(async () => SetError(await _ws.StreamWriteAsync(["XACK", key, g, .. ids], Tr("XACK %@ %@ %@개", key, g, ids.Count.ToString(CultureInfo.InvariantCulture)))));
+            _ws.Fire(async () =>
+            {
+                SetError(await _ws.StreamWriteAsync(["XACK", key, g, .. ids], Tr("XACK %@ %@ %@개", key, g, ids.Count.ToString(CultureInfo.InvariantCulture))));
+                _pending.ClearSelection();   // Mac: pendingSelection = []
+            });
         });
-        pList.SelectionChanged += (_, _) => _ack.IsEnabled = pList.SelectedItems?.Count > 0 && !_ws.ReadOnly;
+        _pending.SelectionChanged += (_, _) => _ack.IsEnabled = _pending.Selected.Count > 0 && !_ws.ReadOnly;
         _ack.IsEnabled = false;
         var groupsRight = new DockPanel { Margin = new Thickness(8), MinWidth = 320 };
         DockPanel.SetDock(_groupTitle, Dock.Top);
-        cView.Height = 110;
-        DockPanel.SetDock(cView, Dock.Top);
+        // Mac .frame(minHeight: 70, maxHeight: 120)
+        _consumers.MinHeight = 70;
+        _consumers.Height = 120;
+        DockPanel.SetDock(_consumers, Dock.Top);
         var ackRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { SetCol(_ack, 1) }, Margin = new Thickness(0, 6, 0, 0) };
         DockPanel.SetDock(ackRow, Dock.Bottom);
         groupsRight.Children.Add(_groupTitle);
-        groupsRight.Children.Add(cView);
+        groupsRight.Children.Add(_consumers);
         groupsRight.Children.Add(ackRow);
-        groupsRight.Children.Add(pView);
+        groupsRight.Children.Add(_pending);
 
         var groupsPane = Split(true, groupsLeft, groupsRight, "*", "*");
         var detail = new Grid { RowDefinitions = new RowDefinitions("*,5,240") };
@@ -1288,18 +1302,19 @@ public sealed class RedisStreamsView : UserControl
         _tail.IsChecked = _ws.Tailing;
         _tail.Content = (_ws.Tailing ? "📡 " : "⏸ ") + Tr("실시간 보기");
         _older.IsVisible = _ws.StreamHasMore;
-        RedisUi.SetItems(_groups, _groupsEmpty, _ws.Groups);
-        _groups.SelectedItem = _ws.Groups.FirstOrDefault(g => g.Name == _ws.Group);
+        _groups.SetItems(_ws.Groups);
+        _groups.Select(_ws.Groups.Where(g => g.Name == _ws.Group).Cast<object>());
         _groupTitle.Text = _ws.Group is { } gr ? Tr("%@ · 소비자 / 대기 중 (PEL)", gr) : Tr("그룹을 고르세요");
-        RedisUi.SetItems(_consumers, _consumersEmpty, _ws.Consumers);
-        RedisUi.SetItems(_pending, _pendingEmpty, _ws.Pending);
+        _consumers.SetItems(_ws.Consumers);
+        _pending.SetItems(_ws.Pending);
         _syncing = false;
         RefreshEntries();
         UpdateError();
     }
 
-    public ListBox PendingList => _pending;
-    public ListBox GroupList => _groups;
+    public RedisTable PendingTable => _pending;
+    public RedisTable GroupTable => _groups;
+    public RedisTable ConsumerTable => _consumers;
 }
 
 // MARK: - 서버 정보

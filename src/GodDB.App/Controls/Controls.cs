@@ -132,6 +132,8 @@ public class CopyButton : Button
     /// 복사할 글 (누를 때 부른다)
     public Func<string>? TextProvider { get; set; }
     public string? Text { get; set; }
+    /// 클립보드에 넣는 방법 (없으면 이 창의 클립보드)
+    public Func<string, Task>? Copier { get; set; }
 
     protected override Type StyleKeyOverride => typeof(Button);
 
@@ -151,7 +153,8 @@ public class CopyButton : Button
     {
         base.OnClick();
         var text = TextProvider?.Invoke() ?? Text ?? "";
-        if (TopLevel.GetTopLevel(this)?.Clipboard is { } c) await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(c, text);
+        if (Copier != null) await Copier(text);
+        else if (TopLevel.GetTopLevel(this)?.Clipboard is { } c) await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(c, text);
         Content = "✓ " + Tr("복사됨");
         Foreground = Brushes.Green;
         await Task.Delay(1500);
