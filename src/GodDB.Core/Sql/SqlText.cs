@@ -15,7 +15,7 @@ public enum SqlDanger { DeleteAll, UpdateAll, Truncate, Drop }
 /// SQL 문자열 처리 유틸 (구문 분리, 읽기전용 검사, LIMIT 자동 부여).
 public static partial class SqlText
 {
-    [GeneratedRegex(@"^[ \t]*GO([ \t]+\d+)?[ \t]*;?[ \t]*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    [GeneratedRegex(@"^[ \t]*GO([ \t]+\d+)?[ \t]*;?[ \t]*\r?$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex GoLineAnywhere();
 
     [GeneratedRegex(@"^GO([ \t]+\d+)?[ \t]*;?$", RegexOptions.IgnoreCase)]

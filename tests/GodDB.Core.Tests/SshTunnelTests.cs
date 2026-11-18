@@ -39,12 +39,12 @@ public class SshTunnelTests
     [Fact]
     public void PicksSshExecutable()
     {
-        var sys = Path.Join(@"C:\Windows", "System32", "OpenSSH", "ssh.exe");
+        var sys = @"C:\Windows\System32\OpenSSH\ssh.exe";
         // Windows: 내장 OpenSSH 먼저
-        Assert.Equal(sys, SshTunnel.FindSsh(true, @"C:\Windows", @"C:\Tools", p => p == sys || p == Path.Join(@"C:\Tools", "ssh.exe")));
+        Assert.Equal(sys, SshTunnel.FindSsh(true, @"C:\Windows", @"C:\Tools", p => p == sys || p == @"C:\Tools\ssh.exe"));
         // 없으면 PATH 의 ssh.exe
-        Assert.Equal(Path.Join(@"C:\Git\usr\bin", "ssh.exe"),
-            SshTunnel.FindSsh(true, @"C:\Windows", @"C:\Nope;""C:\Git\usr\bin""", p => p == Path.Join(@"C:\Git\usr\bin", "ssh.exe")));
+        Assert.Equal(@"C:\Git\usr\bin\ssh.exe",
+            SshTunnel.FindSsh(true, @"C:\Windows", @"C:\Nope;""C:\Git\usr\bin""", p => p == @"C:\Git\usr\bin\ssh.exe"));
         // 아무 데도 없으면 null (→ OpenSSH 클라이언트 설치 안내)
         Assert.Null(SshTunnel.FindSsh(true, @"C:\Windows", @"C:\Nope", _ => false));
         // Mac/Linux: /usr/bin/ssh 먼저, 없으면 PATH

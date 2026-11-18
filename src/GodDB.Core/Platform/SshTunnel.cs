@@ -94,7 +94,7 @@ public sealed class SshTunnel : IDisposable
         {
             if (!string.IsNullOrEmpty(systemRoot))
             {
-                var builtIn = Path.Join(systemRoot, "System32", "OpenSSH", "ssh.exe");
+                var builtIn = systemRoot.TrimEnd('\\') + @"\System32\OpenSSH\ssh.exe";
                 if (fileExists(builtIn)) return builtIn;
             }
         }
@@ -102,7 +102,9 @@ public sealed class SshTunnel : IDisposable
         var name = windows ? "ssh.exe" : "ssh";
         foreach (var dir in (pathEnv ?? "").Split(windows ? ';' : ':', StringSplitOptions.RemoveEmptyEntries))
         {
-            var candidate = Path.Join(dir.Trim().Trim('"'), name);
+            // 검사하는 OS 의 경로 구분자로 잇는다 (테스트가 다른 OS 에서 돌아도 같은 결과)
+            var sep = windows ? '\\' : '/';
+            var candidate = dir.Trim().Trim('"').TrimEnd(sep) + sep + name;
             if (fileExists(candidate)) return candidate;
         }
         return null;

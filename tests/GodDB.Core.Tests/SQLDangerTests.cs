@@ -119,6 +119,21 @@ public class ScriptDelimiterTests
         Assert.Equal("SELECT 'GO';", s[2]);
     }
 
+    /// Windows 편집기는 줄바꿈이 CRLF 다
+    [Fact]
+    public void GoAndDelimiterWorkWithCrlf()
+    {
+        var go = "CREATE PROCEDURE dbo.p AS\r\nBEGIN\r\n  SELECT 1;\r\n  SELECT 2;\r\nEND\r\nGO\r\nEXEC dbo.p;\r\ngo \r\nSELECT 'GO';";
+        var s = SqlText.Statements(go).Select(x => x.Sql).ToList();
+        Assert.Equal(3, s.Count);
+        Assert.Equal("EXEC dbo.p;", s[1]);
+        var my = "DELIMITER $$\r\nCREATE PROCEDURE p1()\r\nBEGIN\r\n  SELECT 1;\r\nEND$$\r\nDELIMITER ;\r\nCALL p1();";
+        var m = SqlText.Statements(my).Select(x => x.Sql).ToList();
+        Assert.Equal(2, m.Count);
+        Assert.EndsWith("END", m[0]);
+        Assert.Equal("CALL p1()", m[1]);
+    }
+
     [Fact]
     public void PlainScriptsUnchanged()
     {
