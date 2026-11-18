@@ -127,8 +127,9 @@ god_db_win/
 | 30 | 시작 화면 · 자동 업데이트 · 새로운 기능 | 시작 화면, Velopack(자동/알림/수동), 변경 이력 창 | U | ✅ (설치 · 업데이트 실기 미확인) |
 | 18 | 변경 이력 | Windows 판 1.3.7 부터 (Mac 과 같은 번호) | — | ✅ |
 | — | 1.3.x 추가 기능 | 실수 방지 확인, 취소 · 시간 제한, 히스토리 Ctrl+Y, 탭 자동 저장, 접속 환경 색, 복사 형식 · 빠른 필터, 주석 · 정렬, .sql 파일, 빠른 찾기 Ctrl+O, DELIMITER/GO, CSV 가져오기(CP949 포함) | U, I | ✅ |
+| — | Mac 1.3.6 · 1.3.7 | 좁은 창 결과 줄, Redis 연결 10초 제한, Ctrl+Enter 커서 문장 · Ctrl+Alt+Enter 전체 실행, 경계 크기 기억 · 레이아웃 초기화, 위험한 명령 확인 설정, DB 로고, 비교 접속 환경 표시 | U, I | ✅ |
 
-> 테스트 수 (Mac, Docker 테스트 DB 포함): 420개 중 409 통과, 11개 건너뜀 (성능 측정 · Windows 전용 · Ollama). Windows CI(windows-latest) 통과.
+> 테스트 수 (Mac, Docker 테스트 DB 포함): 454개 중 443 통과, 11개 건너뜀 (성능 측정 · Windows 전용 · Ollama). Windows CI(windows-latest) 통과.
 > "실기 미확인" 은 기능은 구현했지만 실제 Windows PC 가 없어 사람이 직접 확인하지 못한 것 (7절).
 
 ## 6. 진행 방식
