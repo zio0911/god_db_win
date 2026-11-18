@@ -1,1 +1,5 @@
-{}
+{
+ "Windows 로그인 암호를 입력하세요.": "Enter your Windows sign-in password.",
+ "메모리 (앱을 끌 때까지)": "Memory (until the app quits)",
+ "자격 증명 관리자": "Credential Manager"
+}
