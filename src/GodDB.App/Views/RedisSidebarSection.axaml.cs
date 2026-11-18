@@ -23,10 +23,16 @@ public partial class RedisSidebarSection : UserControl
     {
         InitializeComponent();
         NewKeyButton.Click += (_, _) => { if (Ws is { } ws) ws.ShowNewKey = true; };
+        // Mac SF Symbols: list.bullet.indent / list.bullet / arrow.clockwise / timer(켜면 초록 timer.circle.fill)
+        TreeButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.ListIndent) { Width = 16, Height = 16 };
+        ListButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.List) { Width = 16, Height = 16 };
+        RefreshButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.Refresh) { Width = 16, Height = 16 };
+        UpdateAutoIcon(false);
         TreeButton.Click += (_, _) => { if (Ws is { } ws) { ws.TreeMode = true; TreeButton.IsChecked = true; } };
         ListButton.Click += (_, _) => { if (Ws is { } ws) { ws.TreeMode = false; ListButton.IsChecked = true; } };
         RefreshButton.Click += (_, _) => { if (Ws is { } ws) ws.Fire(() => ws.RefreshAllAsync()); };
-        AutoButton.Click += (_, _) => { if (Ws is { } ws) { ws.SetAutoRefresh(!ws.AutoRefresh); AutoButton.IsChecked = ws.AutoRefresh; } };
+        AutoButton.Click += (_, _) => { if (Ws is { } ws) { ws.SetAutoRefresh(!ws.AutoRefresh); AutoButton.IsChecked = ws.AutoRefresh; UpdateAutoIcon(ws.AutoRefresh); } };
+        AutoButton.PropertyChanged += (_, e) => { if (e.Property == Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty) UpdateAutoIcon(AutoButton.IsChecked == true); };
         SecondsBox.LostFocus += (_, _) => ApplySeconds();
         SecondsBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { ApplySeconds(); e.Handled = true; } };
         MoreButton.Click += (_, _) => { if (Ws is { } ws) ws.Fire(() => ws.LoadMoreKeysAsync()); };
@@ -180,4 +186,12 @@ public partial class RedisSidebarSection : UserControl
         items.Add(Item(Tr("모두 접기"), ws.CollapseAll));
         new ContextMenu { ItemsSource = items }.Open(DelimiterButton);
     }
+
+    /// 자동 새로고침: 꺼짐 timer / 켜짐 초록 timer.circle.fill (Mac .tint(.green))
+    private void UpdateAutoIcon(bool on) =>
+        AutoButton.Content = new GodDB.App.Controls.SymbolIcon(on ? GodDB.App.Controls.Symbol.TimerFill : GodDB.App.Controls.Symbol.Timer)
+        {
+            Width = 16, Height = 16,
+            Foreground = on ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#34C759")) : null,
+        };
 }

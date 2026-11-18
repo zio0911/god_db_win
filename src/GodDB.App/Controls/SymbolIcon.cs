@@ -36,6 +36,14 @@ public enum Symbol
     Rectangles,
     /// square.and.arrow.down (내보내기)
     Download,
+    /// timer (자동 새로고침 꺼짐)
+    Timer,
+    /// timer.circle.fill (자동 새로고침 켜짐 — 초록으로 칠해 쓴다)
+    TimerFill,
+    /// list.bullet.indent (트리)
+    ListIndent,
+    /// list.bullet (목록)
+    List,
 }
 
 public sealed class SymbolIcon : Control
@@ -220,6 +228,31 @@ public sealed class SymbolIcon : Control
                 ctx.DrawRectangle(null, thin, new Rect(P(5, 6), P(14.5, 13.5)), 1.5 * k, 1.5 * k);
                 ctx.DrawLine(thin, P(2, 10.5), P(2, 4)); ctx.DrawLine(thin, P(2, 4), P(3, 3)); ctx.DrawLine(thin, P(3, 3), P(11, 3)); ctx.DrawLine(thin, P(11, 3), P(11.5, 3.5));
                 break;
+            case Symbol.Timer:
+            case Symbol.TimerFill:
+            {
+                bool fill = Symbol == Symbol.TimerFill;
+                var face = new Point(ox + 8 * k, oy + 8.8 * k);
+                if (fill) ctx.DrawEllipse(brush, null, face, 6.6 * k, 6.6 * k);
+                else ctx.DrawEllipse(null, thin, face, 6.2 * k, 6.2 * k);
+                var hand = fill ? new Pen(Brushes.White, Math.Max(1, 1.6 * k), lineCap: PenLineCap.Round) : thin;
+                ctx.DrawLine(hand, face, P(10.6, 6.4));
+                if (!fill) ctx.DrawLine(thin, P(6.4, 0.9), P(9.6, 0.9));   // 스톱워치 꼭지
+                break;
+            }
+            case Symbol.ListIndent:
+            case Symbol.List:
+            {
+                bool indent = Symbol == Symbol.ListIndent;
+                double[] ys = [3.5, 8, 12.5];
+                double[] xs = indent ? [1.8, 5.3, 5.3] : [1.8, 1.8, 1.8];
+                for (int i = 0; i < 3; i++)
+                {
+                    ctx.DrawEllipse(brush, null, P(xs[i], ys[i]), 1.25 * k, 1.25 * k);
+                    ctx.DrawLine(thin, P(xs[i] + 2.8, ys[i]), P(14.5, ys[i]));
+                }
+                break;
+            }
             case Symbol.Download:
             {
                 // 쟁반 + 아래 화살표
