@@ -160,7 +160,8 @@ public class AppGuideTests
     public void BundledFeaturesHasChangelog()
     {
         Assert.NotNull(AppGuide.BundledMarkdown);
-        Assert.Contains(ReleaseNotes.Bundled, e => e.Version == "1.0.0");
+        // 첫 릴리스 = VERSION 파일 번호 (macOS 판과 같은 번호)
+        Assert.Contains(ReleaseNotes.Bundled, e => e.Version == GodDB.Core.AppInfo.Version);
     }
 }
 
