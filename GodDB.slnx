@@ -7,6 +7,9 @@
   <Folder Name="/tests/">
     <Project Path="tests/GodDB.Core.Tests/GodDB.Core.Tests.csproj" />
     <Project Path="tests/GodDB.Integration.Tests/GodDB.Integration.Tests.csproj" />
+<<<<<<< HEAD
     <Project Path="tests/GodDB.Platform.Windows.Tests/GodDB.Platform.Windows.Tests.csproj" />
+=======
+>>>>>>> origin/main
   </Folder>
 </Solution>
