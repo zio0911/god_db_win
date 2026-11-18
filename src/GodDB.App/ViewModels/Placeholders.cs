@@ -45,24 +45,6 @@ public partial class RedisWorkspace : ObservableObject
     public virtual Task CloseAsync() => Task.CompletedTask;
 }
 
-/// 다이어그램 창 하나의 내용 (열 때의 스키마 스냅샷)
-public sealed record DiagramDoc
-{
-    public Guid Id { get; } = Guid.NewGuid();
-    public required string Title { get; init; }
-    public required IReadOnlyList<TableMeta> Tables { get; init; }
-    /// 중심 테이블 (테이블에서 열었을 때)
-    public string? Focus { get; init; }
-    /// 보라색으로 강조할 테이블 (사이드바에서 고른 테이블 / 중심 테이블)
-    public IReadOnlySet<string> Highlighted { get; init; } = new HashSet<string>();
-    /// 컬럼 이름으로 추정한 관계 (외래 키 제약이 없는 DB 용)
-    public IReadOnlyList<ForeignKeyMeta> Inferred { get; init; } = [];
-    /// DB 종류 (AI 분석 SQL 문법용)
-    public DatabaseKind Kind { get; init; } = DatabaseKind.Mysql;
-    /// AI 대화 기록을 구분하는 값 (접속 · DB · 테이블)
-    public string ChatScope { get; init; } = "";
-}
-
 /// 메인 창 오른쪽 AI 어시스턴트 상태: 범위(접속·DB / 모델)별 대화, 테이블 통계 캐시
 public sealed partial class AssistantState : ObservableObject
 {
