@@ -46,6 +46,9 @@ public sealed class MssqlDriver : IDbDriver
     public async Task<RawResult> QueryAsync(string sql, int timeoutSeconds = 0, CancellationToken ct = default)
     {
         if (!IsOpen) throw new GodDbException(DbErrorKind.NotConnected);
+        // 빈 문장: Mac(FreeTDS)은 오류 없이 빈 결과. SqlClient 는 CommandText 가 비면 예외라 여기서 돌려준다.
+        // (스키마 비교에서 identity 만 다른 컬럼은 보정 SQL 이 빈 문자열이다)
+        if (string.IsNullOrWhiteSpace(sql)) return RawResult.Empty;
         await using var cmd = new SqlCommand(sql, _conn) { CommandTimeout = timeoutSeconds };
         await using var r = await cmd.ExecuteReaderAsync(ct);
         RawResult? first = null;

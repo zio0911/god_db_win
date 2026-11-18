@@ -3,7 +3,8 @@ using Npgsql;
 namespace GodDB.Core.Drivers;
 
 /// PostgreSQL (Npgsql). 결과는 모두 **텍스트 형식**으로 받는다 (Mac 판 postgres-nio 텍스트 패치와 같은 모양).
-/// 여러 문장이면 결과 컬럼이 있는 마지막 문장의 결과를 돌려준다.
+/// 여러 문장이면 행이 있는 마지막 문장의 결과를 돌려준다.
+/// (Mac PostgresDriver 는 첫 행에서 컬럼 이름을 읽어서, 행이 없는 문장은 건너뛰고 빈 결과면 컬럼도 없다 → 화면에 "결과 없음")
 public sealed class PostgresDriver : IDbDriver
 {
     private readonly NpgsqlConnection _conn;
@@ -36,12 +37,19 @@ public sealed class PostgresDriver : IDbDriver
     public async Task<RawResult> QueryAsync(string sql, int timeoutSeconds = 0, CancellationToken ct = default)
     {
         if (!IsOpen) throw new GodDbException(DbErrorKind.NotConnected);
+        // 빈 문장: Mac(postgres-nio simpleQuery)은 오류 없이 빈 결과. Npgsql 은 CommandText 가 비면 예외라 여기서 돌려준다.
+        // (스키마 비교에서 identity 만 다른 컬럼은 보정 SQL 이 빈 문자열이다)
+        if (string.IsNullOrWhiteSpace(sql)) return RawResult.Empty;
         await using var cmd = new NpgsqlCommand(sql, _conn) { CommandTimeout = timeoutSeconds, AllResultTypesAreUnknown = true };
         await using var r = await cmd.ExecuteReaderAsync(ct);
         RawResult? last = null;
         do
         {
-            if (r.FieldCount > 0) last = await DriverUtil.ReadAsync(r, Cell, ct);
+            if (r.FieldCount > 0)
+            {
+                var set = await DriverUtil.ReadAsync(r, Cell, ct);
+                if (set.Rows.Count > 0) last = set;
+            }
         } while (await r.NextResultAsync(ct));
         return last ?? RawResult.Empty with { RecordsAffected = r.RecordsAffected };
     }
