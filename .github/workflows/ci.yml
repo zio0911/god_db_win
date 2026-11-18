@@ -1,0 +1,56 @@
+name: CI
+
+# PR 에서만 검사한다. main 에 머지된 뒤에는 다시 돌리지 않는다 (PR 에서 이미 통과한 코드).
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  GODDB_LANG: ko
+
+jobs:
+  windows:
+    name: Windows 빌드 · 단위 테스트
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: 빌드
+        run: dotnet build GodDB.slnx -c Release
+      - name: 단위 테스트 (Windows 전용 코드 포함)
+        run: dotnet test --solution GodDB.slnx -c Release --no-build
+      - name: 배포 빌드 확인 (win-x64 self-contained)
+        run: dotnet publish src/GodDB.App/GodDB.App.csproj -c Release -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained -o publish
+      - name: 실행 파일 확인
+        shell: pwsh
+        run: |
+          if (-not (Test-Path publish/GodDB.exe)) { throw "GodDB.exe 가 없어요" }
+          (Get-Item publish/GodDB.exe).VersionInfo | Format-List FileVersion, ProductVersion
+
+  integration:
+    name: 통합 테스트 (Docker 테스트 DB)
+    # Windows 러너는 Linux 컨테이너를 띄울 수 없어 Linux 에서 돌린다 (Core 는 OS 무관)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: 테스트 DB 컨테이너
+        run: ./scripts/test-dbs.sh up
+      - name: 통합 테스트
+        run: ./scripts/test-dbs.sh test
