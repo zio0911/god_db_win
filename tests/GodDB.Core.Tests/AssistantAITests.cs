@@ -4,7 +4,7 @@ using GodDB.Core.Schema;
 namespace GodDB.Core.Tests;
 
 // Mac 판 DataModelTests.swift 의 "Assistant AI context" · AppGuideTests · ReleaseNotesTests.
-// (DataModel · ModelStore 테스트는 모델링 포팅에서 옮긴다. applyPhysicalNames 의 modelText 확인도 그쪽에서.)
+// (DataModel 로 하는 applyPhysicalNames · modelText 확인은 DataModelTests.cs 의 ModelAiBridgeTests)
 
 public class AssistantAITests
 {

@@ -155,7 +155,7 @@ public sealed class TuningJob
                 }
                 catch (Exception e) when (!ct.IsCancellationRequested)
                 {
-                    AfterError = e.Message;
+                    AfterError = GodDB.Core.Audit.ErrorText.Describe(e).Message;
                 }
             }
             Phase = TuningPhase.Done;

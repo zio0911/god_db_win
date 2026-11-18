@@ -44,7 +44,7 @@ public sealed partial class DbSession
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
             // Mac: ErrorText.describe(error).message — 오류 문장 정리기는 아직 포팅 전이라 예외 메시지를 그대로 쓴다
-            planError = e.Message;
+            planError = GodDB.Core.Audit.ErrorText.Describe(e).Message;
         }
         return new TuningContext(Profile.Kind, version, sql, tables, plan, tree,
                                  plan != null ? PlanAnalyzer.Warnings(plan) : [], planError);

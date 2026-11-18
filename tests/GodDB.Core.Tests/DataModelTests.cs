@@ -438,3 +438,22 @@ public class DataModelTests
         Assert.Contains("bigint", DataModel.CommonTypes(DatabaseKind.Postgres));
     }
 }
+
+/// Mac DataModelTests.applyPhysicalNamesFillsOnlyEmpty (실제 DataModel 로)
+public class ModelAiBridgeTests
+{
+    [Fact]
+    public void ApplyPhysicalNamesFillsOnlyEmpty()
+    {
+        var m = new GodDB.Core.Modeling.DataModel();
+        m.AddTable("회원");
+        m.Tables[0].Columns.Add(new GodDB.Core.Modeling.ModelColumn(logicalName: "이메일", physicalName: "mail"));
+        var answer = "추천이에요.\n```json\n{\"tables\":[{\"key\":\"T1\",\"physical\":\"tb_member\",\"columns\":[{\"key\":\"T1.C1\",\"physical\":\"member_id\"},{\"key\":\"T1.C2\",\"physical\":\"email\"},{\"key\":\"T1.C9\",\"physical\":\"x\"}]}]}\n```";
+        var n = GodDB.Core.Modeling.ModelAiBridge.ApplyPhysicalNames(answer, m);
+        Assert.Equal(2, n);
+        Assert.Equal("tb_member", m.Tables[0].PhysicalName);
+        Assert.Equal("member_id", m.Tables[0].Columns[0].PhysicalName);
+        Assert.Equal("mail", m.Tables[0].Columns[1].PhysicalName);   // 이미 있던 건 그대로
+        Assert.Contains("T1.C2 이메일 [physical: mail]", GodDB.Core.Modeling.ModelAiBridge.ModelText(m));
+    }
+}
