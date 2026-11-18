@@ -25,7 +25,7 @@ public static class TransactionSql
 }
 
 /// 접속 하나 (필요하면 SSH 터널 포함). DB 종류에 맞는 드라이버와 문법(Dialect)을 쓴다. 쿼리는 순차 실행된다.
-public sealed class DbSession : IAsyncDisposable
+public sealed partial class DbSession : IAsyncDisposable
 {
     public ConnectionProfile Profile { get; }
     public ISqlDialect Dialect { get; }
