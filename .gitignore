@@ -8,3 +8,4 @@ Releases/
 .idea/
 .DS_Store
 TestResults/
+.claude/

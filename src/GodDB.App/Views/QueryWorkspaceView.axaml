@@ -1,0 +1,28 @@
+<!-- 쿼리 화면: 탭 바 · SQL 편집기 · 결과 표 (Mac QueryWorkspaceView). DataContext = AppState -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:l="using:GodDB.App.Infrastructure"
+             x:Class="GodDB.App.Views.QueryWorkspaceView"
+             x:DataType="vm:AppState">
+  <!-- .sql 파일 끌어 놓기는 메인 창이 받는다 -->
+  <DockPanel>
+    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+      <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,4">
+          <StackPanel x:Name="TabStripPanel" Orientation="Horizontal" Spacing="2"/>
+          <Button x:Name="AddTabButton" Classes="borderless" Content="＋" Margin="4,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+    <Panel>
+      <ContentControl x:Name="Body"/>
+      <StackPanel x:Name="EmptyState" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="460">
+        <TextBlock x:Name="EmptyIcon" Text="⌨" FontSize="32" HorizontalAlignment="Center" Classes="secondary"/>
+        <TextBlock x:Name="EmptyTitle" Classes="title" HorizontalAlignment="Center"/>
+        <TextBlock x:Name="EmptyText" Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+        <Button x:Name="EmptyNewTab" HorizontalAlignment="Center" Content="{l:T '새 쿼리 탭 (Ctrl+T)'}"/>
+      </StackPanel>
+    </Panel>
+  </DockPanel>
+</UserControl>

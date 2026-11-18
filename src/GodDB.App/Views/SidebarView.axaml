@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:c="using:GodDB.App.Controls"
+             xmlns:v="using:GodDB.App.Views"
+             xmlns:l="using:GodDB.App.Infrastructure"
+             x:Class="GodDB.App.Views.SidebarView"
+             x:DataType="vm:SidebarViewModel"
+             Background="{DynamicResource PanelBackground}">
+  <UserControl.Styles>
+    <Style Selector="Border.profileRow">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="4,3"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Border.profileRow:pointerover">
+      <Setter Property="Background" Value="#14808080"/>
+    </Style>
+    <Style Selector="Border.profileRow.selected">
+      <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
+    </Style>
+    <Style Selector="Border.groupHeader.dropTarget">
+      <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
+    </Style>
+    <Style Selector="TextBlock.sectionHeader">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="Margin" Value="4,10,4,4"/>
+    </Style>
+    <Style Selector="TextBlock.accent">
+      <Setter Property="Foreground" Value="{DynamicResource BlueBrush}"/>
+    </Style>
+    <Style Selector="TreeViewItem">
+      <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="vm:ProfileRowViewModel">
+      <Border Classes="profileRow" Classes.selected="{Binding IsSelected}"
+              Tapped="OnProfileTapped" DoubleTapped="OnProfileDoubleTapped" ContextRequested="OnProfileContext"
+              PointerPressed="OnProfilePointerPressed" PointerMoved="OnProfilePointerMoved">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+          <Panel Width="10" VerticalAlignment="Center">
+            <Ellipse Width="7" Height="7" Fill="{Binding DotBrush}"/>
+            <TextBlock Text="◌" FontSize="10" IsVisible="{Binding IsConnecting}" HorizontalAlignment="Center"/>
+          </Panel>
+          <!-- [연결 상태] [DB 로고] 이름 [환경] (Mac ProfileRow) -->
+          <c:KindBadge Grid.Column="1" Kind="{Binding Kind}"/>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" ClipToBounds="True">
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       FontWeight="{Binding IsSelected, Converter={x:Static l:Conv.SemiboldIf}}"/>
+            <c:EnvironmentBadge Environment="{Binding Environment}"/>
+            <TextBlock Text="{l:T 읽기전용}" FontSize="10" Foreground="{DynamicResource RedBrush}" IsVisible="{Binding ReadOnly}" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock Grid.Column="3" Text="{Binding TabCountText}" IsVisible="{Binding HasTabs}" FontSize="10"
+                     Classes="secondary" VerticalAlignment="Center" ToolTip.Tip="{Binding TabCountTip}"/>
+        </Grid>
+      </Border>
+    </DataTemplate>
+    <DataTemplate DataType="vm:GroupRowViewModel">
+      <Expander IsExpanded="{Binding IsExpanded}" Padding="8,0,0,0" HorizontalAlignment="Stretch"
+                Background="Transparent" BorderThickness="0" MinHeight="0">
+        <Expander.Header>
+          <Border Classes="groupHeader" Background="Transparent" DragDrop.AllowDrop="True" ContextRequested="OnGroupContext"
+                  Padding="0,2" Tag="{Binding Name}">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+              <TextBlock Text="📁" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="2" Text="{Binding ConnectedText}" IsVisible="{Binding HasConnected}" FontSize="10"
+                         Foreground="{DynamicResource GreenBrush}" ToolTip.Tip="{Binding ConnectedTip}" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="3" Text="{Binding CountText}" FontSize="10" Classes="secondary" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+        </Expander.Header>
+        <ItemsControl ItemsSource="{Binding Members}"/>
+      </Expander>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <DockPanel>
+    <!-- 테이블 검색 / Redis 키 검색 -->
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0"
+            IsVisible="{Binding ShowSchema}" Padding="8,6">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+        <TextBlock Text="🔍" Classes="secondary" VerticalAlignment="Center"/>
+        <TextBox Grid.Column="1" x:Name="FilterBox" Text="{Binding App.TableFilter}" PlaceholderText="{l:T 테이블 검색}"
+                 BorderThickness="0" Background="Transparent"/>
+      </Grid>
+    </Border>
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" IsVisible="{Binding ShowRedis}">
+      <v:RedisKeySearchBar x:Name="RedisSearch"/>
+    </Border>
+
+    <ScrollViewer x:Name="Scroll" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="6,0,6,8">
+        <TextBlock Classes="sectionHeader" Text="{l:T 접속}"/>
+        <ItemsControl ItemsSource="{Binding ConnectionItems}"/>
+        <Grid ColumnDefinitions="*,Auto" Margin="2,4,0,0">
+          <Button Classes="link" Command="{Binding NewProfileCommand}" HorizontalAlignment="Left">
+            <TextBlock><Run Text="＋ "/><Run Text="{l:T 새 접속}"/></TextBlock>
+          </Button>
+          <Button Grid.Column="1" Classes="borderless" Content="⇅" ToolTip.Tip="{l:T '접속 정보 내보내기 / 가져오기'}">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="{l:T 접속 정보 내보내기…}" Command="{Binding ExportConnectionsCommand}" IsEnabled="{Binding HasProfiles}"/>
+                <MenuItem Header="{l:T 접속 정보 가져오기…}" Command="{Binding ImportConnectionsCommand}"/>
+                <Separator/>
+                <MenuItem Header="{l:T 'DataGrip 접속 정보 붙여넣기'}" Command="{Binding PasteDataGripCommand}" InputGesture="Ctrl+V"/>
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+        </Grid>
+
+        <SelectableTextBlock Text="{Binding FailureMessage}" IsVisible="{Binding FailureMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             FontSize="11" Classes="error" Margin="4,8,4,0"/>
+
+        <!-- RedisSidebarSection 은 DataContext 가 Redis 작업 공간으로 바뀌므로, 보이기 조건은 바깥 틀에 건다 -->
+        <Panel IsVisible="{Binding ShowRedis}">
+          <v:RedisSidebarSection x:Name="RedisSection"/>
+        </Panel>
+
+        <StackPanel IsVisible="{Binding ShowSchema}">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
+            <TextBlock Text="{Binding ContainerTitle}" Classes="secondary" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Databases}" SelectedItem="{Binding CurrentDatabase}"
+                      HorizontalAlignment="Stretch" MinWidth="50" ToolTip.Tip="{Binding CurrentDatabase}" Padding="6,2"/>
+            <TextBlock Grid.Column="2" Text="{Binding CountText}" VerticalAlignment="Center" FontSize="11"
+                       Classes="secondary" Classes.accent="{Binding MultipleSelected}"/>
+            <Button Grid.Column="3" Classes="borderless" Content="⛓" Command="{Binding DiagramCommand}" x:Name="DiagramButton"/>
+            <Button Grid.Column="4" Classes="borderless" Content="⟳" Command="{Binding RefreshSchemaCommand}"
+                    ToolTip.Tip="{l:T '스키마 새로고침 (Ctrl+Shift+R)'}"/>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SchemaLoading}" Margin="4,2">
+            <c:ActivitySpinner Width="14" Height="14" VerticalAlignment="Center"/>
+            <TextBlock Text="{l:T 스키마 불러오는 중…}" FontSize="11" Classes="secondary"/>
+          </StackPanel>
+
+          <TreeView x:Name="TableTree" ItemsSource="{Binding TableNodes}" SelectionMode="Multiple"
+                    SelectionChanged="OnTableSelectionChanged" DoubleTapped="OnTableDoubleTapped">
+            <TreeView.DataTemplates>
+              <TreeDataTemplate DataType="vm:TableNodeViewModel" ItemsSource="{Binding Children}">
+                <StackPanel Orientation="Horizontal" Spacing="5" ToolTip.Tip="{Binding Tip}" Background="Transparent">
+                  <StackPanel.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="{l:T '데이터 보기 (SELECT)'}" Command="{Binding OpenQueryCommand}"/>
+                      <MenuItem Header="{l:T '테이블 수정 (ALTER)…'}" Command="{Binding AlterCommand}"/>
+                      <MenuItem Header="{l:T 'CREATE 문 보기'}" Command="{Binding DdlCommand}"/>
+                      <MenuItem Header="{l:T '인덱스 상세 보기'}" Command="{Binding IndexesCommand}"/>
+                      <MenuItem Header="{Binding DiagramTitle}" Command="{Binding DiagramCommand}"/>
+                      <Separator/>
+                      <MenuItem Header="{l:T '이름 복사'}" Command="{Binding CopyNameCommand}"/>
+                      <Separator/>
+                      <MenuItem Header="{l:T 'CSV 가져오기…'}" Command="{Binding ImportCsvCommand}" IsEnabled="{Binding CanModify}"/>
+                      <MenuItem Header="{l:T '이름 변경…'}" Command="{Binding RenameCommand}" IsEnabled="{Binding CanModify}"/>
+                      <MenuItem Header="{l:T '삭제 (DROP)…'}" Command="{Binding DropCommand}" IsEnabled="{Binding CanModify}" Foreground="{DynamicResource RedBrush}"/>
+                    </ContextMenu>
+                  </StackPanel.ContextMenu>
+                  <c:TableCellsIcon Width="16" Height="16" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                </StackPanel>
+              </TreeDataTemplate>
+              <DataTemplate DataType="vm:ColumnNodeViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding Tip}">
+                  <TextBlock Text="{Binding Icon}" Width="14" FontSize="9" VerticalAlignment="Center" TextAlignment="Center"/>
+                  <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Type}" FontSize="12" Classes="secondary" VerticalAlignment="Center"/>
+                  <TextBlock Text="NN" FontSize="9" Foreground="{DynamicResource TertiaryText}" IsVisible="{Binding NotNull}" VerticalAlignment="Center"/>
+                </StackPanel>
+              </DataTemplate>
+              <TreeDataTemplate DataType="vm:IndexFolderViewModel" ItemsSource="{Binding Children}">
+                <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent">
+                  <StackPanel.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="{l:T '인덱스 상세 보기'}" Command="{Binding DetailsCommand}"/>
+                    </ContextMenu>
+                  </StackPanel.ContextMenu>
+                  <TextBlock Text="≡" Foreground="{DynamicResource PurpleBrush}" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Title}" FontSize="12" VerticalAlignment="Center"/>
+                </StackPanel>
+              </TreeDataTemplate>
+              <DataTemplate DataType="vm:IndexNodeViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding Tip}">
+                  <TextBlock Text="{Binding Icon}" Foreground="{DynamicResource PurpleBrush}" FontSize="10" Width="14" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding ColumnsText}" FontSize="12" Classes="secondary" VerticalAlignment="Center"/>
+                  <TextBlock Text="UQ" FontSize="9" Foreground="{DynamicResource TertiaryText}" IsVisible="{Binding ShowUnique}" VerticalAlignment="Center"/>
+                </StackPanel>
+              </DataTemplate>
+            </TreeView.DataTemplates>
+          </TreeView>
+
+          <ItemsControl ItemsSource="{Binding RoutineSections}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:RoutineSectionViewModel">
+                <StackPanel>
+                  <TextBlock Classes="sectionHeader" Text="{Binding Title}"/>
+                  <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:RoutineRowViewModel">
+                        <Border Classes="profileRow" ToolTip.Tip="{Binding Tip}" DoubleTapped="OnRoutineDoubleTapped">
+                          <Border.ContextMenu>
+                            <ContextMenu>
+                              <MenuItem Header="{l:T '정의 보기'}" Command="{Binding OpenDefinitionCommand}"/>
+                              <MenuItem Header="{l:T '데이터 보기 (SELECT)'}" Command="{Binding SelectDataCommand}" IsVisible="{Binding IsView}"/>
+                              <MenuItem Header="{l:T 'CALL 문 만들기'}" Command="{Binding CallTemplateCommand}" IsVisible="{Binding IsProcedure}"/>
+                              <Separator/>
+                              <MenuItem Header="{l:T '이름 복사'}" Command="{Binding CopyNameCommand}"/>
+                            </ContextMenu>
+                          </Border.ContextMenu>
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding Icon}" Width="14" TextAlignment="Center" Classes="secondary"/>
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

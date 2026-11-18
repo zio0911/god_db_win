@@ -1,0 +1,41 @@
+<!-- 시작 화면: 아이콘 + 진행 막대 + 지금 하는 일 (Mac SplashView) -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:l="using:GodDB.App.Infrastructure"
+             x:Class="GodDB.App.Views.SplashView"
+             x:DataType="vm:StartupState"
+             Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+  <UserControl.Transitions>
+    <Transitions>
+      <DoubleTransition Property="Opacity" Duration="0:0:0.35"/>
+    </Transitions>
+  </UserControl.Transitions>
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" Width="320">
+    <Border Width="96" Height="96" CornerRadius="22" Background="{DynamicResource BlueBrush}" HorizontalAlignment="Center">
+      <TextBlock Text="G" FontSize="56" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+    <StackPanel Spacing="4" HorizontalAlignment="Center">
+      <TextBlock Text="GodDB" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock x:Name="VersionText" Classes="secondary" HorizontalAlignment="Center"/>
+    </StackPanel>
+    <StackPanel Spacing="8">
+      <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="1" Height="6"/>
+      <TextBlock x:Name="CurrentText" Classes="secondary"/>
+      <ItemsControl ItemsSource="{Binding Steps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:StartupState+Step">
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1">
+              <TextBlock Text="✔" FontSize="11" Foreground="{DynamicResource GreenBrush}" IsVisible="{Binding Done}"/>
+              <TextBlock Text="◌" FontSize="11" Classes="secondary" IsVisible="{Binding !Done}"/>
+              <TextBlock Text="{Binding Title}" FontSize="11" Classes.secondary="{Binding Done}"/>
+              <TextBlock FontSize="11" Foreground="{DynamicResource TertiaryText}" IsVisible="{Binding Note, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <Run Text="· "/><Run Text="{Binding Note}"/>
+              </TextBlock>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

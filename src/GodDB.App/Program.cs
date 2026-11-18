@@ -6,11 +6,21 @@ namespace GodDB.App;
 internal static class Program
 {
     [STAThread]
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
         // Velopack: 설치·업데이트 훅을 가장 먼저 처리한다 (설치 프로그램이 앱을 불렀을 때 바로 끝남)
         VelopackApp.Build().Run();
+        // 감사 로그 검사: GodDB --verify-audit [폴더] → 결과를 출력하고 문제가 있으면 종료 코드 1
+        var i = Array.IndexOf(args, "--verify-audit");
+        if (i >= 0)
+        {
+            var dir = args.Length > i + 1 ? args[i + 1] : LogFile.Shared.Directory;
+            var reports = AuditChain.Verify(dir);
+            foreach (var r in reports) Console.WriteLine(AuditChain.Describe(r));
+            return reports.Any(r => r.Status is AuditFileStatus.Broken or AuditFileStatus.Unlinked) ? 1 : 0;
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        return 0;
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

@@ -39,6 +39,16 @@ jobs:
         run: |
           if (-not (Test-Path publish/GodDB.exe)) { throw "GodDB.exe 가 없어요" }
           (Get-Item publish/GodDB.exe).VersionInfo | Format-List FileVersion, ProductVersion
+      - name: 설치 파일 만들기 점검 (Velopack, 릴리스 안 함)
+        shell: bash
+        run: |
+          dotnet tool install -g vpk
+          V="$(tr -d '\r\n' < VERSION)"
+          vpk pack --packId GodDB --packVersion "$V" --packDir publish --mainExe GodDB.exe \
+            --packTitle GodDB --packAuthors zio0911 --outputDir Releases
+          ls -la Releases
+          ls Releases | grep -qi "Setup.exe" || { echo "Setup.exe 가 없어요"; exit 1; }
+          ls Releases | grep -qi "Portable.zip" || { echo "Portable.zip 이 없어요"; exit 1; }
 
   integration:
     name: 통합 테스트 (Docker 테스트 DB)

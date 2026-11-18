@@ -1,0 +1,118 @@
+<!-- 스키마 비교 (Mac CompareView). 두 접속의 스키마를 비교하고 보정 SQL 을 만든다 (자동 실행하지 않음).
+     메인 창이 DataContext = AppState 로 넣고, 안쪽 Root 는 CompareViewModel 에 묶는다. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             xmlns:v="using:GodDB.App.Views"
+             xmlns:l="using:GodDB.App.Infrastructure"
+             xmlns:c="using:GodDB.App.Controls"
+             xmlns:schema="using:GodDB.Core.Schema"
+             x:Class="GodDB.App.Views.CompareView"
+             x:DataType="vm:AppState">
+  <UserControl.Styles>
+    <Style Selector="Border.chip">
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="8,3"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </UserControl.Styles>
+  <DockPanel x:Name="Root" x:DataType="vm:CompareViewModel">
+    <!-- 기준 / 대상 두 줄. 접속 이름이 길어도 선택 상자가 남은 폭 안에서 줄어든다 -->
+    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1" Padding="10">
+      <Grid ColumnDefinitions="Auto,*,170,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+        <TextBlock Classes="secondary" Text="{l:T 기준}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+        <!-- [로고] 이름 · 환경 목록 + 고른 접속의 환경 표시 (Mac #101) -->
+        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <ComboBox x:Name="SourcePicker" MinWidth="160" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Choices}" SelectedItem="{Binding Source}" ToolTip.Tip="{Binding Source.Tip}"/>
+          <c:EnvironmentBadge Grid.Column="1" x:Name="SourceEnv" Environment="{Binding Source.Environment, FallbackValue={x:Static vm:CompareViewModel.NoEnvironment}}"/>
+        </Grid>
+        <TextBox Grid.Column="2" x:Name="SourceDbBox" Text="{Binding SourceDb}" PlaceholderText="{l:T 'DB/스키마 (비우면 기본)'}"/>
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{l:T 대상}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+        <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <ComboBox x:Name="TargetPicker" MinWidth="160" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Choices}" SelectedItem="{Binding Target}" ToolTip.Tip="{Binding Target.Tip}"/>
+          <c:EnvironmentBadge Grid.Column="1" x:Name="TargetEnv" Environment="{Binding Target.Environment, FallbackValue={x:Static vm:CompareViewModel.NoEnvironment}}"/>
+        </Grid>
+        <TextBox Grid.Row="1" Grid.Column="2" x:Name="TargetDbBox" Text="{Binding TargetDb}" PlaceholderText="{l:T 'DB/스키마 (비우면 기본)'}"/>
+        <Button Grid.Column="3" Grid.RowSpan="2" x:Name="CompareButton" Classes="accent" VerticalAlignment="Center" Margin="4,0,0,0"
+                Command="{Binding CompareCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="⇄"/>
+            <TextBlock Text="{l:T 비교}"/>
+          </StackPanel>
+        </Button>
+      </Grid>
+    </Border>
+
+    <Panel>
+      <!-- 읽는 중 -->
+      <StackPanel IsVisible="{Binding Running}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <ProgressBar IsIndeterminate="True" Width="160"/>
+        <TextBlock Classes="secondary" Text="{l:T 두 DB 스키마를 읽는 중…}" HorizontalAlignment="Center"/>
+      </StackPanel>
+
+      <!-- 오류 -->
+      <SelectableTextBlock IsVisible="{Binding ShowError}" Classes="error" Text="{Binding Error}" Margin="16"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+      <!-- 처음 -->
+      <StackPanel IsVisible="{Binding ShowEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" MaxWidth="460">
+        <TextBlock Text="⇄" FontSize="32" Classes="secondary" HorizontalAlignment="Center"/>
+        <TextBlock Classes="headline" Text="{l:T 기준과 대상을 고르고 비교를 눌러 주세요}" HorizontalAlignment="Center"/>
+        <TextBlock Classes="secondary" TextWrapping="Wrap" TextAlignment="Center"
+                   Text="{l:T '대상 DB에 없는 테이블·컬럼·인덱스를 기준에 맞추는 SQL을 만들어요. 삭제(DROP)는 만들지 않아요.'}"/>
+      </StackPanel>
+
+      <!-- 결과 -->
+      <DockPanel IsVisible="{Binding ShowResult}">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8" Margin="10">
+          <Border Classes="chip" Background="#1F34C759"><TextBlock Text="{Binding MatchedText}" Foreground="{DynamicResource GreenBrush}"/></Border>
+          <Border Grid.Column="1" Classes="chip" Background="#1FFF9500"><TextBlock Text="{Binding DifferentText}" Foreground="{DynamicResource OrangeBrush}"/></Border>
+          <Border Grid.Column="2" Classes="chip" Background="#1FFF3B30"><TextBlock Text="{Binding MissingText}" Foreground="{DynamicResource RedBrush}"/></Border>
+          <CheckBox Grid.Column="3" x:Name="ExtraToggle" IsChecked="{Binding ShowExtra}" Content="{Binding ExtraText}"/>
+          <Button Grid.Column="5" Command="{Binding CopyAllCommand}" Content="{l:T 전체 SQL 복사}"/>
+          <Button Grid.Column="6" Command="{Binding OpenInTabCommand}" Content="{l:T 쿼리 탭으로 열기}"/>
+        </Grid>
+
+        <Panel>
+          <StackPanel IsVisible="{Binding NoDifferences}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+            <TextBlock Text="✓" FontSize="32" Foreground="{DynamicResource GreenBrush}" HorizontalAlignment="Center"/>
+            <TextBlock Classes="headline" Text="{l:T 차이가 없어요}" HorizontalAlignment="Center"/>
+            <TextBlock Classes="secondary" Text="{l:T 두 스키마의 테이블·컬럼·인덱스가 같아요.}" HorizontalAlignment="Center"/>
+          </StackPanel>
+          <Grid IsVisible="{Binding HasItems}" ColumnDefinitions="*,1,360">
+            <DataGrid x:Name="Items" MinWidth="300" ItemsSource="{Binding Visible}" SelectedItem="{Binding Selection}"
+                      IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" HeadersVisibility="Column"
+                      GridLinesVisibility="None">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" Width="28">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="schema:SchemaDiffItem">
+                      <TextBlock Text="{Binding Severity, Converter={x:Static v:CompareConv.Icon}}"
+                                 Foreground="{Binding Severity, Converter={x:Static v:CompareConv.Brush}}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="{l:T 테이블}" Binding="{Binding Table}" Width="160" x:DataType="schema:SchemaDiffItem"/>
+                <DataGridTextColumn Header="{l:T 대상}" Binding="{Binding Object, TargetNullValue='—'}" Width="140" x:DataType="schema:SchemaDiffItem"/>
+                <DataGridTextColumn Header="{l:T 내용}" Binding="{Binding Detail}" Width="*" x:DataType="schema:SchemaDiffItem"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <Border Grid.Column="1" Classes="divider"/>
+            <DockPanel Grid.Column="2" Margin="10">
+              <TextBlock DockPanel.Dock="Top" Classes="headline" Text="{l:T 보정 SQL}" Margin="0,0,0,8"/>
+              <Button DockPanel.Dock="Bottom" Margin="0,8,0,0" Command="{Binding CopySelectedCommand}" Content="{l:T 이 SQL 복사}"/>
+              <Border Background="{DynamicResource CodeBackground}" CornerRadius="6" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                  <SelectableTextBlock x:Name="SqlText" Classes="mono" Text="{Binding SelectedSql}" Margin="8" TextWrapping="Wrap"/>
+                </ScrollViewer>
+              </Border>
+            </DockPanel>
+          </Grid>
+        </Panel>
+      </DockPanel>
+    </Panel>
+  </DockPanel>
+</UserControl>

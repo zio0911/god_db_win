@@ -1,0 +1,103 @@
+<!-- 메인 창 (Mac ContentView): 메뉴 막대 | 위 막대(접속 표시 · 모드 · AI) | 사이드바 ║ 본문(+AI 패널) ═ 상태창 · 상태 표시줄 -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GodDB.App.ViewModels"
+        xmlns:v="using:GodDB.App.Views"
+        xmlns:l="using:GodDB.App.Infrastructure"
+        x:Class="GodDB.App.Views.MainWindow"
+        x:DataType="vm:AppState"
+        Width="1280" Height="800" MinWidth="980" MinHeight="620"
+        DragDrop.AllowDrop="True"
+        Title="GodDB">
+  <Window.Styles>
+    <Style Selector="ToggleButton.segment">
+      <Setter Property="Padding" Value="12,3"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="MinWidth" Value="0"/>
+    </Style>
+    <Style Selector="ToggleButton.segment:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource BlueBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="ToggleButton.segment:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="Border.statusBar">
+      <Setter Property="Background" Value="{DynamicResource BarBackground}"/>
+      <Setter Property="Padding" Value="10,4"/>
+    </Style>
+  </Window.Styles>
+
+  <Panel>
+    <DockPanel>
+      <Menu DockPanel.Dock="Top" x:Name="MainMenu"/>
+
+      <!-- 위 막대 -->
+      <Border DockPanel.Dock="Top" Background="{DynamicResource BarBackground}" BorderBrush="{DynamicResource DividerBrush}"
+              BorderThickness="0,0,0,1" Padding="10,5">
+        <Grid ColumnDefinitions="*,Auto,*">
+          <StackPanel x:Name="Badge" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"/>
+          <Border Grid.Column="1" CornerRadius="6" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" ClipToBounds="True">
+            <StackPanel Orientation="Horizontal">
+              <ToggleButton Classes="segment" x:Name="ModeQuery" Content="{l:T 쿼리}"/>
+              <ToggleButton Classes="segment" x:Name="ModeCompare" Content="{l:T 스키마 비교}"/>
+              <ToggleButton Classes="segment" x:Name="ModeModeling" Content="{l:T 모델링}"/>
+            </StackPanel>
+          </Border>
+          <ToggleButton Grid.Column="2" x:Name="AssistantToggle" HorizontalAlignment="Right" Classes="segment"
+                        ToolTip.Tip="{l:T 'AI 어시스턴트 열기/닫기 (Ctrl+Shift+I) · 테이블 정보·특이사항·SQL 을 로컬 Ollama 와 대화'}">
+            <TextBlock><Run Text="✨ "/><Run Text="{l:T AI 어시스턴트}"/></TextBlock>
+          </ToggleButton>
+        </Grid>
+      </Border>
+
+      <Grid x:Name="Body">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="260" MinWidth="200" MaxWidth="520"/>
+          <ColumnDefinition Width="4"/>
+          <ColumnDefinition Width="*" MinWidth="520"/>
+        </Grid.ColumnDefinitions>
+        <v:SidebarView x:Name="Sidebar"/>
+        <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="{DynamicResource DividerBrush}"/>
+
+        <Grid Grid.Column="2" x:Name="Right">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" MinHeight="200"/>
+            <RowDefinition Height="0"/>
+            <RowDefinition Height="0"/>
+            <RowDefinition Height="1"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <Grid x:Name="Main">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" MinWidth="200"/>
+              <ColumnDefinition Width="0"/>
+              <ColumnDefinition Width="0"/>
+            </Grid.ColumnDefinitions>
+            <ContentControl x:Name="ContentHost" ClipToBounds="True"/>
+            <GridSplitter Grid.Column="1" x:Name="AssistantSplitter" ResizeDirection="Columns" Background="{DynamicResource DividerBrush}" IsVisible="False"/>
+            <v:AssistantPanel Grid.Column="2" x:Name="Assistant" IsVisible="False"/>
+          </Grid>
+          <GridSplitter Grid.Row="1" x:Name="LogSplitter" ResizeDirection="Rows" Background="{DynamicResource DividerBrush}" IsVisible="False"/>
+          <v:LogPanelView Grid.Row="2" x:Name="LogPanel" IsVisible="False"/>
+          <Border Grid.Row="3" Classes="divider"/>
+          <!-- 상태 표시줄: 마지막 이벤트 · 오류 수 · [상태창] -->
+          <Border Grid.Row="4" Classes="statusBar" x:Name="StatusBar" Cursor="Hand">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock x:Name="StatusIcon" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="StatusText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Classes="secondary"/>
+              <TextBlock Grid.Column="2" x:Name="ErrorCountText" Foreground="{DynamicResource RedBrush}" VerticalAlignment="Center"/>
+              <Button Grid.Column="3" Classes="borderless" x:Name="LogToggle" ToolTip.Tip="{l:T '상태창 열기/닫기 (Ctrl+Shift+L)'}">
+                <TextBlock><Run x:Name="LogChevron" Text="▲ "/><Run Text="{l:T 상태창}"/></TextBlock>
+              </Button>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+    </DockPanel>
+
+    <v:SplashView x:Name="Splash" DataContext="{Binding Startup}"/>
+  </Panel>
+</Window>
