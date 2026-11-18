@@ -8,7 +8,10 @@ namespace GodDB.App.Views;
 [SheetFor(nameof(AppState.EditingProfile))]
 public partial class ConnectionEditorWindow : Window
 {
-    public ConnectionEditorViewModel Vm { get; }
+    public ConnectionEditorViewModel Vm { get; } = null!;
+
+    /// XAML 미리보기용
+    public ConnectionEditorWindow() => InitializeComponent();
 
     public ConnectionEditorWindow(AppState app, object value)
     {

@@ -49,7 +49,7 @@ public sealed class PasswordPromptWindow : Window
             Ui.Button(Tr("취소"), () => { _app.PasswordPrompt = null; Close(); }, isCancel: true),
         ]));
         Content = new Border { Padding = new Thickness(20), Child = stack };
-        Opened += (_, _) => Field.Focus();
+        Opened += (_, _) => Field.FocusBox();
     }
 
     public void Submit()
@@ -73,7 +73,7 @@ public sealed class GroupPromptWindow : Window
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
-        var box = new TextBox { Text = prompt.Initial, Watermark = Tr("그룹 이름 (예: 운영, 개발, 프로젝트명)") };
+        var box = new TextBox { Text = prompt.Initial, PlaceholderText = Tr("그룹 이름 (예: 운영, 개발, 프로젝트명)") };
         Button ok = null!;
         void Submit()
         {

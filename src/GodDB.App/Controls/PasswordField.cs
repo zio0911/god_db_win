@@ -46,13 +46,13 @@ public class PasswordField : UserControl
         grid.Children.Add(_eye);
         Content = grid;
         _box.Bind(TextBox.TextProperty, new Binding(nameof(Text)) { Source = this, Mode = BindingMode.TwoWay });
-        _box.Bind(TextBox.WatermarkProperty, new Binding(nameof(Watermark)) { Source = this });
+        _box.Bind(TextBox.PlaceholderTextProperty, new Binding(nameof(Watermark)) { Source = this });
         _box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Submit?.Invoke(); };
         _eye.Click += async (_, _) => await ToggleAsync();
         UpdateEye();
     }
 
-    public new void Focus() => _box.Focus();
+    public void FocusBox() => _box.Focus();
 
     /// 눈 버튼 (테스트에서도 부른다)
     public async Task ToggleAsync()

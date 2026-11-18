@@ -91,7 +91,7 @@ public sealed class ExportConnectionsWindow : Window
             var problem = PassphraseProblem;
             _problem.Text = problem ?? "";
             _problem.IsVisible = problem != null && Passphrase.Text.Length > 0;
-            _export.IsEnabled = Selected.Count > 0 && problem == null;
+            if (_export is { } ex) ex.IsEnabled = Selected.Count > 0 && problem == null;
         }
         _update = Update;
         Update();
@@ -160,7 +160,7 @@ public sealed class ImportConnectionsWindow : Window
                 ImportAction.Replace r => Ui.Text(Tr("이미 있음 → 덮어씀 (%@)", r.ExistingName), "caption"),
                 _ => Ui.Text(Tr("새로 추가"), "caption"),
             };
-            action.Foreground = new SolidColorBrush(Color.Parse(action.Text == Tr("새로 추가") ? "#34C759" : "#FF9500"));
+            action.Foreground = new SolidColorBrush(Color.Parse((action.Text ?? "") == Tr("새로 추가") ? "#34C759" : "#FF9500"));
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             row.Children.Add(info);
             Grid.SetColumn(action, 1);

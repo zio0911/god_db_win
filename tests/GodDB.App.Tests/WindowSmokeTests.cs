@@ -117,6 +117,18 @@ public class WindowSmokeTests
         Pump();
         Assert.False(app.ShowProblemReport);
         Assert.Null(app.GroupPrompt);
+
+        // 입력창에서 확인: AppState 가 요청을 지우면 창이 닫히고, 창이 스스로 다시 닫아도 문제없다
+        var a = TestEnv.Profile("a");
+        app.Profiles.Add(a);
+        app.GroupPrompt = new GroupPrompt(new GroupPromptAction.Move(a.Id));
+        Pump();
+        var gp = w.OpenSheets[nameof(AppState.GroupPrompt)];
+        app.SubmitGroupPrompt(app.GroupPrompt!, "dev");
+        Pump();
+        gp.Close();
+        Assert.Equal("dev", app.Profiles.Single(x => x.Id == a.Id).Group);
+        Assert.False(w.OpenSheets.ContainsKey(nameof(AppState.GroupPrompt)));
         w.Close();
     });
 

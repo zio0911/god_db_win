@@ -13,7 +13,7 @@ public sealed class ProblemReportWindow : Window
 {
     private static readonly string[] Dbs = ["MySQL", "PostgreSQL", "SQL Server", "Redis", "해당 없음"];
 
-    public TextBox TitleBox { get; } = new() { Watermark = Tr("예: Redis 키 트리를 보다가 앱이 종료돼요") };
+    public TextBox TitleBox { get; } = new() { PlaceholderText = Tr("예: Redis 키 트리를 보다가 앱이 종료돼요") };
     public ComboBox DbBox { get; } = new() { ItemsSource = Dbs, SelectedIndex = Dbs.Length - 1 };
     public TextBox Steps { get; } = Editor(70);
     public TextBox Expected { get; } = Editor(50);

@@ -86,7 +86,7 @@
             IsVisible="{Binding ShowSchema}" Padding="8,6">
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
         <TextBlock Text="🔍" Classes="secondary" VerticalAlignment="Center"/>
-        <TextBox Grid.Column="1" x:Name="FilterBox" Text="{Binding App.TableFilter}" Watermark="{l:T 테이블 검색}"
+        <TextBox Grid.Column="1" x:Name="FilterBox" Text="{Binding App.TableFilter}" PlaceholderText="{l:T 테이블 검색}"
                  BorderThickness="0" Background="Transparent"/>
       </Grid>
     </Border>
