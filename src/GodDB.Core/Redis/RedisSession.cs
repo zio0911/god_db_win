@@ -125,6 +125,8 @@ public sealed class RedisSession : IAsyncDisposable
     private RedisTopology _topology = new RedisTopology.Standalone();
     private int _db;
     private string? _password;
+    /// 연결 과정 명령(AUTH · SELECT · INFO · CLUSTER SLOTS · 센티널 조회)의 응답 제한
+    private TimeSpan _timeout = TimeSpan.FromSeconds(10);
     /// 노드 주소("host:port") → 연결 / SSH 터널
     private readonly Dictionary<string, RedisConnection> _conns = new();
     private readonly Dictionary<string, SshTunnel> _tunnels = new();
@@ -138,9 +140,13 @@ public sealed class RedisSession : IAsyncDisposable
     public RedisTopology Topology { get { lock (_sync) return _topology; } }
     public int Db { get { lock (_sync) return _db; } }
 
-    public static async Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default)
+    public static Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default) =>
+        ConnectAsync(profile, password, TimeSpan.FromSeconds(10), ct);
+
+    public static async Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, TimeSpan timeout,
+                                                        CancellationToken ct = default)
     {
-        var s = new RedisSession(profile);
+        var s = new RedisSession(profile) { _timeout = timeout };
         try
         {
             await s.OpenAsync(password, ct);
@@ -200,13 +206,13 @@ public sealed class RedisSession : IAsyncDisposable
                     bool clusterEnabled = Profile.RedisMode == RedisMode.Cluster;
                     if (!clusterEnabled)
                     {
-                        try { clusterEnabled = ((await conn.SendAsync(["INFO", "cluster"], ct)).AsString ?? "").Contains("cluster_enabled:1"); }
-                        catch (RedisServerException) { }
+                        try { clusterEnabled = ((await conn.SendAsync(["INFO", "cluster"], _timeout, ct)).AsString ?? "").Contains("cluster_enabled:1"); }
+                        catch (RedisServerException) { }  // INFO 를 막은 서버는 단일로 본다. 시간 초과 · 연결 끊김은 실패
                     }
                     if (clusterEnabled) await RefreshSlotsAsync(ct);
                     else if (wantedDB != 0)
                     {
-                        await conn.SendAsync(["SELECT", wantedDB.ToString(CultureInfo.InvariantCulture)], ct);
+                        await conn.SendAsync(["SELECT", wantedDB.ToString(CultureInfo.InvariantCulture)], _timeout, ct);
                         lock (_sync) _db = wantedDB;
                     }
                     break;
@@ -231,7 +237,7 @@ public sealed class RedisSession : IAsyncDisposable
                     var c = await RedisConnection.ConnectAsync(await OptionsAsync(addr, pw, 0, ct), ct);
                     try
                     {
-                        var v = await c.SendAsync(["SENTINEL", "get-master-addr-by-name", name], ct);
+                        var v = await c.SendAsync(["SENTINEL", "get-master-addr-by-name", name], _timeout, ct);
                         var a = v.AsArray;
                         if (a == null || a.Count != 2 || a[0].AsString is not string h || a[1].AsInt is not long p)
                             throw new RedisCommandException(RedisCommandErrorKind.SentinelMasterNotFound, name);
@@ -260,7 +266,7 @@ public sealed class RedisSession : IAsyncDisposable
         string primary;
         lock (_sync) primary = _primary;
         var seedHost = RedisCluster.Split(primary)?.Host ?? Profile.Host;
-        var v = await (await ConnectionAsync(primary, ct)).SendAsync(["CLUSTER", "SLOTS"], ct);
+        var v = await (await ConnectionAsync(primary, ct)).SendAsync(["CLUSTER", "SLOTS"], _timeout, ct);
         var parsed = RedisCluster.ParseSlots(v, seedHost);
         if (parsed.Count == 0) return;
         var masters = new List<string>();
@@ -298,6 +304,7 @@ public sealed class RedisSession : IAsyncDisposable
             Host = h, Port = p,
             ServerName = Profile.Ssh == null && !HostResolver.IsIPAddress(host) ? host : null,
             UseTls = Profile.UseTLS, Username = Profile.Username, Password = password, Database = database,
+            Timeout = _timeout,
         };
     }
 

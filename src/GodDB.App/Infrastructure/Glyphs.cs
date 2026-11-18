@@ -4,6 +4,8 @@ namespace GodDB.App.Infrastructure;
 public static class Glyphs
 {
     public const string Run = "▶";
+    /// 전체 실행 (Mac forward.fill)
+    public const string RunAll = "⏩";
     public const string Stop = "■";
     public const string Plus = "＋";
     public const string Close = "✕";

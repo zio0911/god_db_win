@@ -48,10 +48,11 @@
             <Ellipse Width="7" Height="7" Fill="{Binding DotBrush}"/>
             <TextBlock Text="◌" FontSize="10" IsVisible="{Binding IsConnecting}" HorizontalAlignment="Center"/>
           </Panel>
-          <TextBlock Grid.Column="1" Text="🛢" FontSize="11" VerticalAlignment="Center" Opacity="0.7"/>
+          <!-- [연결 상태] [DB 로고] 이름 [환경] (Mac ProfileRow) -->
+          <c:KindBadge Grid.Column="1" Kind="{Binding Kind}"/>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" ClipToBounds="True">
-            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-            <c:KindBadge Kind="{Binding Kind}"/>
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       FontWeight="{Binding IsSelected, Converter={x:Static l:Conv.SemiboldIf}}"/>
             <c:EnvironmentBadge Environment="{Binding Environment}"/>
             <TextBlock Text="{l:T 읽기전용}" FontSize="10" Foreground="{DynamicResource RedBrush}" IsVisible="{Binding ReadOnly}" VerticalAlignment="Center"/>
           </StackPanel>

@@ -5,6 +5,7 @@ The same list is shown in the app under **설정 > 라이선스** (Settings > Li
 
 | Component | Version | License | Copyright | Note |
 |---|---|---|---|---|
+| [Simple Icons](https://simpleicons.org) | 16.38.0 | CC0-1.0 | Simple Icons contributors | MySQL · PostgreSQL · Redis logos (database type icons). MySQL is a trademark of Oracle, PostgreSQL of the PostgreSQL Community Association, and Redis of Redis Ltd.; the logos are used only to indicate the database type. |
 | [.NET](https://github.com/dotnet/runtime) | 10 | MIT | Copyright (c) .NET Foundation and Contributors | Runtime (bundled, self-contained) |
 | [Avalonia](https://github.com/AvaloniaUI/Avalonia) | 12.1.6 | MIT | Copyright (c) AvaloniaUI OÜ | UI framework |
 | [AvaloniaEdit](https://github.com/AvaloniaUI/AvaloniaEdit) | 12.0.0 | MIT | Copyright (c) AvaloniaUI OÜ; Copyright (c) AlphaSierraPapa for the SharpDevelop Team | SQL editor |

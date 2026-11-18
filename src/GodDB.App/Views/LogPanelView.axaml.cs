@@ -37,6 +37,13 @@ public partial class LogPanelView : UserControl
             _app.SelectedLogId = (List.SelectedItem as LogEntry)?.Id;
         };
         L10n.LanguageChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => { UpdateEmpty(); ShowDetail(); });
+        // 로그 상세 폭: 끌어서 바꾸면 저장 (Mac Layout.logDetailWidth, 200 ~ 전체 - 200)
+        var detail = Body.ColumnDefinitions[2];
+        detail.Width = new GridLength(Layout.Get(Layout.LogDetailWidth));
+        detail.MinWidth = 200;
+        Body.ColumnDefinitions[0].MinWidth = 200;
+        Layout.SaveOnDrag(DetailSplitter, detail, Layout.LogDetailWidth);
+        Layout.OnReset(this, () => detail.Width = new GridLength(Layout.Get(Layout.LogDetailWidth)));
     }
 
     protected override void OnDataContextChanged(EventArgs e)

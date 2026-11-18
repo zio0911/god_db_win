@@ -117,6 +117,13 @@ public sealed class RedisNotConnectedException : Exception
     public RedisNotConnectedException(Exception inner) : base(L10n.Tr("DB 연결이 끊어졌어요. 다시 연결해 주세요."), inner) { }
 }
 
+/// 연결 과정에서 서버가 정해진 시간 안에 응답하지 않음 (Mac 판 RedisTimeoutError)
+public sealed class RedisTimeoutException(int seconds)
+    : Exception(L10n.Tr("Redis 서버가 %@초 안에 응답하지 않았어요. 주소 · 포트 · TLS 설정과 네트워크(SSH 터널)를 확인하세요.", seconds))
+{
+    public int Seconds { get; } = seconds;
+}
+
 public static class RedisText
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);

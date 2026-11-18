@@ -30,7 +30,6 @@ public sealed class DiagramWindow : Window
     private readonly GridSplitter? _splitter;
     private readonly Button? _aiButton;
     private bool _didFit;
-    private double _aiWidth = 380;
     // Mac withAnimation(.easeInOut(duration: 0.2)) { fit() } · { showAI.toggle() }
     private readonly Tween _zoomTween = new();
     private readonly Tween _aiTween = new();
@@ -97,6 +96,9 @@ public sealed class DiagramWindow : Window
         _splitter.Bind(BackgroundProperty, _splitter.GetResourceObservable("DividerBrush"));
         Grid.SetColumn(_splitter, 1);
         body.Children.Add(_splitter);
+        // AI 패널 폭: 끌어서 바꾸면 저장 (Mac Layout.diagramAIWidth)
+        Layout.SaveOnDrag(_splitter, _aiColumn, Layout.DiagramAIWidth);
+        Layout.OnReset(body, () => { if (AiVisible) _aiColumn.Width = new GridLength(Layout.Get(Layout.DiagramAIWidth)); });
         Grid.SetColumn(AiPanel, 2);
         body.Children.Add(AiPanel);
 
@@ -124,33 +126,33 @@ public sealed class DiagramWindow : Window
     public void SetAiVisible(bool on, bool animate = false)
     {
         if (_aiColumn == null || AiPanel == null || _splitter == null) return;
-        if (AiVisible && _aiColumn.Width.IsAbsolute && _aiColumn.Width.Value > 0) _aiWidth = _aiColumn.Width.Value;
+        if (AiVisible && _aiColumn.Width.IsAbsolute && _aiColumn.Width.Value > 0) Layout.Set(Layout.DiagramAIWidth, _aiColumn.Width.Value);
         AiVisible = on;
         _aiTween.Cancel();
         if (_aiButton != null) _aiButton.Foreground = on ? new SolidColorBrush(DiagramCanvas.Purple) : null;
-        void Layout(bool show)
+        void ApplyLayout(bool show)
         {
             AiPanel.IsVisible = show;
             _splitter.IsVisible = show;
             _aiColumn.MinWidth = show ? 300 : 0;
             _aiColumn.MaxWidth = show ? 700 : 0;
-            _aiColumn.Width = new GridLength(show ? _aiWidth : 0);
+            _aiColumn.Width = new GridLength(show ? Layout.Get(Layout.DiagramAIWidth) : 0);
         }
         if (!animate)
         {
             AiPanel.Opacity = 1;
-            Layout(on);
+            ApplyLayout(on);
             return;
         }
         if (on)
         {
-            Layout(true);
+            ApplyLayout(true);
             _aiTween.Start(0.2, t => AiPanel.Opacity = t);
         }
         else
         {
             var from = AiPanel.Opacity;
-            _aiTween.Start(0.2, t => AiPanel.Opacity = from * (1 - t), () => { Layout(false); AiPanel.Opacity = 1; });
+            _aiTween.Start(0.2, t => AiPanel.Opacity = from * (1 - t), () => { ApplyLayout(false); AiPanel.Opacity = 1; });
         }
     }
 

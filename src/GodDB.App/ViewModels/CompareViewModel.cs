@@ -9,11 +9,19 @@ public sealed partial class CompareViewModel : ObservableObject
 {
     public AppState App { get; }
 
-    /// 접속 고르기 항목 (Id 가 null 이면 "선택")
-    public sealed record Choice(Guid? Id, string Name)
+    /// 접속 고르기 항목 (Id 가 null 이면 "선택", IsHeader 면 고를 수 없는 그룹 이름 줄 — Mac Picker 의 Section)
+    public sealed record Choice(Guid? Id, string Name, DatabaseKind? Kind = null,
+                                ConnectionEnvironment Environment = ConnectionEnvironment.None, string Group = "", bool IsHeader = false)
     {
-        public override string ToString() => Name;
+        /// "이름 · 운영" (환경 표시 안 함이면 이름만) — Mac CompareView.label
+        public string Label => Kind == null || Environment == ConnectionEnvironment.None ? Name : $"{Name} · {Environment.Title()}";
+        /// 고른 접속의 도움말: 이름 · 환경 · 그룹
+        public string Tip => Id == null ? "" : Label + (Group.Length == 0 ? "" : " · " + Group);
+        public override string ToString() => Label;
     }
+
+    /// 고른 접속이 없을 때 환경 표시 (숨김)
+    public static readonly ConnectionEnvironment NoEnvironment = ConnectionEnvironment.None;
 
     [ObservableProperty] private Choice? _source;
     [ObservableProperty] private Choice? _target;
@@ -39,7 +47,15 @@ public sealed partial class CompareViewModel : ObservableObject
         var keepS = Source?.Id;
         var keepT = Target?.Id;
         var list = new List<Choice> { new(null, Tr("선택")) };
-        list.AddRange(App.Profiles.Where(p => p.Kind.IsSql()).Select(p => new Choice(p.Id, p.Name)));
+        var sql = App.Profiles.Where(p => p.Kind.IsSql()).ToList();
+        Choice Item(ConnectionProfile p) => new(p.Id, p.Name, p.Kind, p.Environment, p.Group);
+        // 그룹 없는 접속 먼저, 그다음 그룹별 (사이드바와 같은 순서 — Mac #101)
+        list.AddRange(sql.Where(p => p.Group.Length == 0).Select(Item));
+        foreach (var g in App.ProfileGroups.Where(g => sql.Any(p => p.Group == g)))
+        {
+            list.Add(new Choice(null, g, IsHeader: true));
+            list.AddRange(sql.Where(p => p.Group == g).Select(Item));
+        }
         Choices = list;
         Source = list.FirstOrDefault(c => c.Id == keepS && keepS != null) ?? list[0];
         Target = list.FirstOrDefault(c => c.Id == keepT && keepT != null) ?? list[0];
@@ -54,8 +70,17 @@ public sealed partial class CompareViewModel : ObservableObject
 
     public bool CanCompare => Source?.Id != null && Target?.Id != null && !Running;
 
-    partial void OnSourceChanged(Choice? value) => CompareStateChanged();
-    partial void OnTargetChanged(Choice? value) => CompareStateChanged();
+    partial void OnSourceChanged(Choice? value)
+    {
+        if (value is { IsHeader: true }) { Source = Choices[0]; return; }
+        CompareStateChanged();
+    }
+
+    partial void OnTargetChanged(Choice? value)
+    {
+        if (value is { IsHeader: true }) { Target = Choices[0]; return; }
+        CompareStateChanged();
+    }
     partial void OnRunningChanged(bool value)
     {
         CompareStateChanged();

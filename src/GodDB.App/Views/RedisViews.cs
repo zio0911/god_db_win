@@ -769,7 +769,12 @@ public sealed class RedisConsoleView : UserControl
         var grid = new Grid { RowDefinitions = new RowDefinitions("*,5,160") };
         grid.RowDefinitions[2].MinHeight = 80;
         grid.RowDefinitions[2].MaxHeight = 500;
+        // Workbench 높이: 끌어서 바꾸면 저장 (Mac Layout.redisWorkbenchHeight)
+        var workbench = grid.RowDefinitions[2];
+        workbench.Height = new GridLength(Math.Clamp(Layout.Get(Layout.RedisWorkbenchHeight), 80, 500));
+        Layout.OnReset(this, () => workbench.Height = new GridLength(Layout.Get(Layout.RedisWorkbenchHeight)));
         var splitter = new GridSplitter { ResizeDirection = GridResizeDirection.Rows };
+        Layout.SaveOnDrag(splitter, workbench, Layout.RedisWorkbenchHeight);
         splitter.Bind(BackgroundProperty, splitter.GetResourceObservable("DividerBrush"));
         Grid.SetRow(splitter, 1);
         Grid.SetRow(editorPanel, 2);

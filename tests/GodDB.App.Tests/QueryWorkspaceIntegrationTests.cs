@@ -22,6 +22,12 @@ public class QueryWorkspaceIntegrationTests
         Dispatcher.UIThread.RunJobs();
     }
 
+    private static void Key(Control target, Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods) =>
+        target.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = key, KeyModifiers = mods, Source = target,
+        });
+
     [Fact]
     public Task RunSortEditAndScripts_ThroughTheView() => UiThread.Run(async () =>
     {
@@ -77,16 +83,31 @@ public class QueryWorkspaceIntegrationTests
             await Until(() => !tab.Running && !tab.PageLoading && tab.Edits.IsEmpty);
             Assert.Contains(pane.Grid.Rows, r => r.Values[1] == "zz");
 
-            // 여러 문장 (조회만이라 확인 없이 실행) → 결과 탭
-            tv.Editor.SetSqlText($"SELECT 1 AS x;\nSELECT name FROM {table} ORDER BY id");
+            // Ctrl+Enter: 선택이 없으면 커서가 있는 문장 하나만 (Mac #98)
+            tv.Editor.SetSqlText("SELECT 1 AS x;\nSELECT 2 AS y");
+            tv.Editor.CaretOffset = 3;
+            Key(tv, Avalonia.Input.Key.Enter, Avalonia.Input.KeyModifiers.Control);
+            await Until(() => !tab.Running && tab.Result?.Columns.Count > 0 && tab.Result.Sql?.Contains("AS x") == true);
+            Assert.Single(tab.Results);
+            Assert.Equal("x", tab.Result!.Columns[0].Name);
+            tv.Editor.CaretOffset = tv.Editor.SqlText.Length;
             tv.Run(explain: false);
+            await Until(() => !tab.Running && tab.Result?.Sql?.Contains("AS y") == true);
+            Assert.Single(tab.Results);
+            // Ctrl+Alt+Enter: 모든 문장을 위에서부터
+            Key(tv, Avalonia.Input.Key.Enter, Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Alt);
+            await Until(() => !tab.Running && tab.Results.Count == 2);
+
+            // 여러 문장 전체 실행 (조회만이라 확인 없이 실행) → 결과 탭
+            tv.Editor.SetSqlText($"SELECT 1 AS x;\nSELECT name FROM {table} ORDER BY id");
+            tv.Run(explain: false, all: true);
             await Until(() => !tab.Running && tab.Results.Count == 2);
             Assert.Equal(2, pane.TabsBar.Titles.Count);
             Assert.Equal("2 SELECT 3행", pane.TabsBar.Titles[1]);
 
             // 중간 실패
             tv.Editor.SetSqlText($"SELECT 1;\nSELECT * FROM {table}_none");
-            tv.Run(explain: false);
+            tv.Run(explain: false, all: true);
             await Until(() => !tab.Running && tab.Error != null);
             Assert.StartsWith("2번째 문장에서 멈췄어요", pane.ErrorText.Text);
 

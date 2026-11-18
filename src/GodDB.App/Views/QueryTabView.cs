@@ -87,6 +87,7 @@ public sealed class QueryTabView : UserControl
     private readonly Border _banner;
     private readonly TextBlock _bannerText = new() { Foreground = Brushes.White, FontSize = 11, FontWeight = FontWeight.SemiBold };
     private readonly Button _run;
+    private readonly Button _runAll;
     private readonly Button _cancel;
     private readonly Button _explain;
     private readonly Button _tune;
@@ -110,7 +111,8 @@ public sealed class QueryTabView : UserControl
             Child = Q.H(6, new TextBlock { Text = "⚠", Foreground = Brushes.White, FontSize = 11 }, _bannerText),
         };
 
-        _run = Q.B(Glyphs.Run + " " + Tr("실행"), () => Run(explain: false), Tr("선택 영역만 실행, 선택이 없으면 전체를 위에서부터 실행 (Ctrl+Enter)"), "accent");
+        _run = Q.B(Glyphs.Run + " " + Tr("실행"), () => Run(explain: false), Tr("선택 영역만 실행, 선택이 없으면 커서가 있는 문장(강조된 문장)만 실행 (Ctrl+Enter)"), "accent");
+        _runAll = Q.B(Glyphs.RunAll + " " + Tr("전체 실행"), () => Run(explain: false, all: true), Tr("편집기의 모든 문장을 위에서부터 실행 (Ctrl+Alt+Enter)"));
         _cancel = Q.B(Glyphs.Stop + " " + Tr("취소"), Cancel, Tr("실행 중인 쿼리 멈추기 (Ctrl+.)"));
         _cancel.Background = Q.Red;
         _cancel.Foreground = Brushes.White;
@@ -122,7 +124,8 @@ public sealed class QueryTabView : UserControl
             Tr("DB 에서 생성문(정의)을 다시 읽어 편집기 내용을 바꿔요"));
         var history = Q.B("🕘 " + Tr("히스토리"), () => _app.ShowHistory = true, Tr("실행한 쿼리 다시 찾기 (Ctrl+Y)"));
 
-        _limit = new ComboBox { MinWidth = 96, VerticalAlignment = VerticalAlignment.Center };
+        // 좁아져도 선택한 값(500 등)은 항상 보이게: 이름표만 compact 에서 숨기고 선택 상자는 줄이지 않는다 (Mac minWidth 72)
+        _limit = new ComboBox { MinWidth = 72, VerticalAlignment = VerticalAlignment.Center };
         foreach (var (_, label) in Limits)
         {
             var item = new ComboBoxItem();
@@ -138,8 +141,8 @@ public sealed class QueryTabView : UserControl
         var pageLabel = Q.T(Tr("페이지"));
         pageLabel.Classes.Add("label");
 
-        var left = Q.H(10, _run, _cancel, _explain, _tune, _refreshSource, history, Q.H(4, pageLabel, _limit), _txDivider, Tx);
-        var hint = Q.T(Tr("Tab 자동완성 · Ctrl+Enter 실행 · Ctrl+Shift+Enter 실행 계획 · Ctrl+/ 주석 · Ctrl+Alt+L 정렬"), "caption");
+        var left = Q.H(10, _run, _runAll, _cancel, _explain, _tune, _refreshSource, history, Q.H(4, pageLabel, _limit), _txDivider, Tx);
+        var hint = Q.T(Tr("Tab 자동완성 · Ctrl+Enter 커서 문장 실행 · Ctrl+Alt+Enter 전체 실행 · Ctrl+Shift+Enter 실행 계획 · Ctrl+/ 주석 · Ctrl+Alt+L 정렬"), "caption");
         hint.Classes.Add("label");
         hint.TextWrapping = TextWrapping.NoWrap;
         hint.Margin = new Thickness(10, 0, 0, 0);
@@ -160,12 +163,16 @@ public sealed class QueryTabView : UserControl
         top.Children.Add(div);
         top.Children.Add(Editor);
 
+        // 편집기 높이 (결과 창과의 경계): 조절하면 모든 탭 · 다음 실행에 쓴다 (Mac Layout.queryEditorHeight)
         _split = new Grid { RowDefinitions = new RowDefinitions("220,Auto,*") };
+        _split.RowDefinitions[0].Height = new GridLength(Layout.Get(Layout.QueryEditorHeight));
         _split.RowDefinitions[0].MinHeight = 80;
         _split.RowDefinitions[2].MinHeight = 140;
         _split.Children.Add(top);
         // Mac ResizeHandle(axis: .horizontal): 편집기 기본 높이 220, 80 ~ (전체 - 140)
         var splitter = Q.ResizeHandle(rows: true);
+        Layout.SaveOnDrag(splitter, _split.RowDefinitions[0], Layout.QueryEditorHeight);
+        Layout.OnReset(this, () => _split.RowDefinitions[0].Height = new GridLength(Layout.Get(Layout.QueryEditorHeight)));
         Grid.SetRow(splitter, 1);
         _split.Children.Add(splitter);
         Grid.SetRow(Results, 2);
@@ -179,6 +186,12 @@ public sealed class QueryTabView : UserControl
     }
 
     public QueryTab? Tab => _tab;
+
+    /// 편집기 높이 · 전체 실행 버튼 · 페이지 크기 선택 (테스트용)
+    public double EditorHeight => _split.RowDefinitions[0].Height.Value;
+    public Button RunAllButton => _runAll;
+    public Button RunButton => _run;
+    public ComboBox LimitPicker => _limit;
 
     // MARK: - 탭 바꾸기
 
@@ -294,7 +307,7 @@ public sealed class QueryTabView : UserControl
         _banner.IsVisible = profile?.Environment == ConnectionEnvironment.Production;
         _bannerText.Text = Tr("운영 접속 · %@", profile?.Name ?? "");
         var running = tab?.Running == true;
-        _run.IsVisible = !running;
+        _run.IsVisible = _runAll.IsVisible = !running;
         _cancel.IsVisible = running;
         _explain.IsEnabled = !running && tab != null;
         _tune.IsVisible = TuningSettings.Enabled;
@@ -315,6 +328,8 @@ public sealed class QueryTabView : UserControl
     {
         var mods = e.KeyModifiers;
         if (e.Key == Key.Enter && mods == KeyModifiers.Control) { Run(explain: false); e.Handled = true; }
+        // Mac ⌥⌘↩ 전체 실행
+        else if (e.Key == Key.Enter && mods == (KeyModifiers.Control | KeyModifiers.Alt)) { Run(explain: false, all: true); e.Handled = true; }
         else if (e.Key == Key.Enter && mods == (KeyModifiers.Control | KeyModifiers.Shift)) { Run(explain: true); e.Handled = true; }
         else if (mods == KeyModifiers.Control && (e.Key == Key.OemPeriod || e.PhysicalKey == PhysicalKey.Period)) { Cancel(); e.Handled = true; }
         else if (mods == (KeyModifiers.Control | KeyModifiers.Alt) && (e.Key == Key.T || e.PhysicalKey == PhysicalKey.T) && TuningSettings.Enabled) { Tune(); e.Handled = true; }
@@ -331,8 +346,9 @@ public sealed class QueryTabView : UserControl
         _app.StartTuning(sql);
     }
 
-    /// 실행 버튼 / Ctrl+Enter: 선택 영역이 있으면 그 안의 문장만, 없으면 편집기 전체. 실행 계획은 선택 영역 또는 커서 문장 하나.
-    public void Run(bool explain)
+    /// 실행 버튼 / Ctrl+Enter: 선택 영역이 있으면 그 안의 문장만, 없으면 커서가 있는 문장 하나 (편집기가 강조하는 문장).
+    /// 전체 실행 / Ctrl+Alt+Enter (all): 편집기의 모든 문장을 위에서부터. 실행 계획은 선택 영역 또는 커서 문장 하나.
+    public void Run(bool explain, bool all = false)
     {
         if (_tab is not { Running: false } tab) return;
         RunConfirm? confirm;
@@ -343,8 +359,10 @@ public sealed class QueryTabView : UserControl
         }
         else
         {
-            confirm = RunConfirm.ForRun(Editor.SelectedSql(), Editor.SqlText, tab.Edits.Count,
-                _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production);
+            confirm = all
+                ? RunConfirm.ForRunAll(Editor.SqlText, tab.Edits.Count, _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production)
+                : RunConfirm.ForRun(Editor.SelectedSql(), Editor.SqlToRun(), tab.Edits.Count,
+                    _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production);
         }
         if (confirm == null) return;
         var c = confirm;

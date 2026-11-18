@@ -24,6 +24,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _dialogs = dialogs ?? app?.Dialogs ?? new NullDialogs();
         _language = L10n.Language;
         _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
+        _confirmDangerous = RunConfirm.ConfirmDangerous;
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
         _tuningEnabled = TuningSettings.Enabled;
@@ -59,6 +60,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnQueryTimeoutIndexChanged(int value)
     {
         if (value >= 0 && value < TimeoutValues.Length) Prefs.Set(AppState.QueryTimeoutKey, TimeoutValues[value]);
+    }
+
+    /// 안전 > 위험한 명령 실행 전 확인 (기본 켬). 켜고 끈 기록은 상태창 · 로그 파일 · 감사 로그(설정)에 남긴다. (Mac #103)
+    [ObservableProperty] private bool _confirmDangerous;
+    partial void OnConfirmDangerousChanged(bool value)
+    {
+        Prefs.Set(RunConfirm.ConfirmDangerousKey, value);
+        App?.Log(value ? LogLevel.Info : LogLevel.Warning, LogSource.App,
+                 value ? Tr("위험한 명령 실행 전 확인을 켰어요") : Tr("위험한 명령 실행 전 확인을 껐어요"),
+                 audit: new AuditRecord(AuditAction.Settings, "GodDB", value ? "위험한 명령 확인 켬" : "위험한 명령 확인 끔"));
     }
 
     [ObservableProperty] private bool _logFileEnabled;
@@ -310,7 +321,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnSelectedLicenseChanged(string value)
     {
         foreach (var n in new[] { nameof(LicenseTitle), nameof(LicenseSubtitle), nameof(LicenseCopyright), nameof(LicenseNote),
-                                  nameof(LicenseUrl), nameof(LicenseText), nameof(IsGodDB), nameof(HasLicenseNote) })
+                                  nameof(LicenseUrl), nameof(LicenseText), nameof(HasLicenseText), nameof(IsGodDB), nameof(HasLicenseNote) })
             OnPropertyChanged(n);
     }
 
@@ -322,7 +333,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string LicenseNote => Selected is { Note.Length: > 0 } l ? Tr(l.Note) : "";
     public bool HasLicenseNote => LicenseNote.Length > 0;
     public string LicenseUrl => Selected?.Url ?? Licenses.GodDBUrl;
-    public string LicenseText => Selected?.Text ?? Licenses.GodDB;
+    /// 전체 문구 (없으면 링크 안내 — Mac: Simple Icons 처럼 text 가 nil 인 항목)
+    public string LicenseText => Selected == null ? Licenses.GodDB : Selected.Text ?? "";
+    public bool HasLicenseText => LicenseText.Length > 0;
 
     [RelayCommand]
     private void OpenLicenseUrl() => _dialogs.OpenExternal(LicenseUrl);

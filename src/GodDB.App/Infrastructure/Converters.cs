@@ -26,6 +26,9 @@ public static class Conv
 
     public static readonly IValueConverter Not = new FuncValueConverter<bool, bool>(b => !b);
 
+    /// 선택된 줄 이름은 굵게 (Mac .fontWeight(selected ? .semibold : .regular))
+    public static readonly IValueConverter SemiboldIf = new FuncValueConverter<bool, FontWeight>(b => b ? FontWeight.SemiBold : FontWeight.Normal);
+
     /// 상태창 수준 아이콘
     public static readonly IValueConverter LevelIcon = new FuncValueConverter<LogLevel, string>(l => l switch
     {
