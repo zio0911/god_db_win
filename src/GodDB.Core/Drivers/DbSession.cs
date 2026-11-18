@@ -56,7 +56,7 @@ public sealed class DbSession : IAsyncDisposable
     public DbSession(ConnectionProfile profile)
     {
         Profile = profile;
-        Dialect = Dialects.Dialects.Of(profile.Kind);
+        Dialect = ISqlDialect.Of(profile.Kind);
     }
 
     public static async Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default)
