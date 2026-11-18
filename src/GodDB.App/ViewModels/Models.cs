@@ -215,17 +215,27 @@ public sealed record RunConfirm
 
     public bool NeedsConfirm => WholeScript || Dangerous.Count > 0 || DiscardedEdits > 0 || ProductionWrites;
 
-    /// 편집기에서 [실행] (선택 영역이 있으면 selected 에 그 SQL, 없으면 null 과 편집기 전체 text)
-    public static RunConfirm? ForRun(string? selected, string text, int discardedEdits, bool production)
+    /// 위험한 명령(WHERE 없는 DELETE · UPDATE, TRUNCATE, DROP, Redis FLUSHALL 등) 실행 전 확인 (기본 켬, Mac AppState.confirmDangerousKey)
+    public const string ConfirmDangerousKey = "GodDB.safety.confirmDangerous";
+    public static bool ConfirmDangerous => Prefs.Get(ConfirmDangerousKey, true);
+
+    /// 편집기에서 [실행] / Ctrl+Enter: 선택 영역이 있으면 그 안의 문장들, 없으면 커서가 있는 문장 하나 (current)
+    public static RunConfirm? ForRun(string? selected, string? current, int discardedEdits, bool production) =>
+        Make(SqlText.Statements(selected ?? current ?? "").Select(s => s.Sql).ToList(), all: false, discardedEdits, production);
+
+    /// [전체 실행] / Ctrl+Alt+Enter: 편집기의 모든 문장을 위에서부터. 변경 문이 섞여 있으면 확인한다.
+    public static RunConfirm? ForRunAll(string text, int discardedEdits, bool production) =>
+        Make(SqlText.Statements(text).Select(s => s.Sql).ToList(), all: true, discardedEdits, production);
+
+    private static RunConfirm? Make(List<string> statements, bool all, int discardedEdits, bool production)
     {
-        var source = selected ?? text;
-        var statements = SqlText.Statements(source).Select(s => s.Sql).ToList();
         if (statements.Count == 0) return null;
         return new RunConfirm
         {
             Statements = statements,
-            WholeScript = selected == null && statements.Count > 1 && statements.Any(s => !SqlText.IsReadOnly(s)),
-            Dangerous = statements.Where(s => SqlText.Danger(s) != null).ToList(),
+            WholeScript = all && statements.Count > 1 && statements.Any(s => !SqlText.IsReadOnly(s)),
+            // 설정에서 끄면 위험한 명령 확인은 건너뛴다. 운영 접속의 변경 확인 · 전체 실행 확인은 그대로 (Mac #103)
+            Dangerous = ConfirmDangerous ? statements.Where(s => SqlText.Danger(s) != null).ToList() : [],
             DiscardedEdits = discardedEdits,
             Production = production,
         };
@@ -263,7 +273,7 @@ public sealed record RunConfirm
                 parts.Add(string.Join("\n", lines) + (Dangerous.Count > 3 ? "\n…" : ""));
             }
             if (WholeScript)
-                parts.Add(Tr("선택 영역이 없어서 편집기의 모든 문장(%@개, 변경 문 %@개)을 위에서부터 실행해요. 일부만 실행하려면 그 부분을 선택하세요.",
+                parts.Add(Tr("편집기의 모든 문장(%@개, 변경 문 %@개)을 위에서부터 실행해요. 한 문장만 실행하려면 그 문장에 커서를 두고 Ctrl+Enter 를 누르세요.",
                              Statements.Count, writes.Count));
             if (DiscardedEdits > 0)
                 parts.Add(Tr("결과 표에서 고치고 적용하지 않은 %@건은 사라져요.", DiscardedEdits));

@@ -858,7 +858,8 @@ public partial class RedisWorkspace : ObservableObject
     {
         var lines = RedisText.ScriptLines(text);
         if (lines.Count == 0) return;
-        if (!confirmed && lines.Any(l => RedisText.SplitArgs(l) is { } a && RedisCommands.IsDangerous(a)))
+        // 설정 > 일반 > 안전 에서 끄면 위험한 명령 확인을 건너뛴다 (Mac #103)
+        if (!confirmed && RunConfirm.ConfirmDangerous && lines.Any(l => RedisText.SplitArgs(l) is { } a && RedisCommands.IsDangerous(a)))
         {
             PendingScript = lines;
             var danger = lines.Where(l => RedisText.SplitArgs(l) is { } a && RedisCommands.IsDangerous(a));
@@ -880,7 +881,7 @@ public partial class RedisWorkspace : ObservableObject
         }
         if (History.Count == 0 || History[^1] != trimmed) History.Add(trimmed);
         if (History.Count > 500) History.RemoveRange(0, History.Count - 500);
-        if (!confirmed && RedisCommands.IsDangerous(args))
+        if (!confirmed && RunConfirm.ConfirmDangerous && RedisCommands.IsDangerous(args))
         {
             PendingDangerous = args;
             var ok = await ConfirmDangerousAsync([RedisFormat.Display(args)]);

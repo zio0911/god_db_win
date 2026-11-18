@@ -24,7 +24,6 @@ public partial class ModelingView : UserControl
     private Grid? _canvasGrid;
     private ContentControl? _selectionHost;
     private GridSplitter? _editorSplitter;
-    private double _editorHeight = 280;
     private ScrollViewer? _canvasScroll;
     private TextBox? _nameBox;
     private ComboBox? _kindBox;
@@ -40,6 +39,14 @@ public partial class ModelingView : UserControl
         var col = Root.ColumnDefinitions[0];
         col.MinWidth = 170;
         col.MaxWidth = 360;
+        // 모델 목록 폭: 끌어서 바꾸면 저장 (Mac Layout.modelListWidth)
+        col.Width = new GridLength(Math.Clamp(Layout.Get(Layout.ModelListWidth), 170, 360));
+        Layout.SaveOnDrag(ListSplitter, col, Layout.ModelListWidth);
+        Layout.OnReset(this, () =>
+        {
+            col.Width = new GridLength(Layout.Get(Layout.ModelListWidth));
+            if (_canvasGrid?.RowDefinitions[2] is { } row && _selectionHost?.Content != null) row.Height = new GridLength(Layout.Get(Layout.ModelEditorHeight));
+        });
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -159,6 +166,8 @@ public partial class ModelingView : UserControl
         _canvasGrid.Children.Add(canvasArea);
         _editorSplitter = new GridSplitter { Height = 4, ResizeDirection = GridResizeDirection.Rows, Background = ModelUi.Brush("DividerBrush"), IsVisible = false };
         Grid.SetRow(_editorSplitter, 1);
+        // 아래 편집기 높이: 끌어서 바꾸면 저장 (Mac Layout.modelEditorHeight)
+        Layout.SaveOnDrag(_editorSplitter, _canvasGrid.RowDefinitions[2], Layout.ModelEditorHeight);
         _canvasGrid.Children.Add(_editorSplitter);
         _selectionHost = new ContentControl();
         Grid.SetRow(_selectionHost, 2);
@@ -294,11 +303,11 @@ public partial class ModelingView : UserControl
             _ => null,
         };
         var row = _canvasGrid.RowDefinitions[2];
-        if (_selectionHost.Content != null && row.Height.IsAbsolute && row.Height.Value > 0) _editorHeight = row.Height.Value;
+        if (_selectionHost.Content != null && row.Height.IsAbsolute && row.Height.Value > 0) Layout.Set(Layout.ModelEditorHeight, row.Height.Value);
         _selectionHost.Content = editor;
         _editorSplitter.IsVisible = editor != null;
         row.MinHeight = editor != null ? 140 : 0;
-        row.Height = new GridLength(editor != null ? _editorHeight : 0);
+        row.Height = new GridLength(editor != null ? Layout.Get(Layout.ModelEditorHeight) : 0);
     }
 
     // MARK: - 창

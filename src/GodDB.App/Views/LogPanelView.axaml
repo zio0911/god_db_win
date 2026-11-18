@@ -44,7 +44,7 @@
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
-        <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="{DynamicResource DividerBrush}"/>
+        <GridSplitter Grid.Column="1" x:Name="DetailSplitter" ResizeDirection="Columns" Background="{DynamicResource DividerBrush}"/>
         <ScrollViewer Grid.Column="2" x:Name="DetailScroll">
           <StackPanel Margin="10" Spacing="10" x:Name="Detail"/>
         </ScrollViewer>

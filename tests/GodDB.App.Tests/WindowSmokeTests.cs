@@ -73,7 +73,7 @@ public class WindowSmokeTests
         w.Vm.SelectedLicense = "Npgsql";
         Assert.Equal("PostgreSQL · 10.0.3", w.Vm.LicenseSubtitle);
         Assert.Contains("Npgsql", w.Vm.LicenseText);
-        Assert.Equal(10, w.Vm.LicenseItems.Count);
+        Assert.Equal(11, w.Vm.LicenseItems.Count);   // GodDB + 오픈소스 10개 (Simple Icons 포함)
         w.Close();
     });
 

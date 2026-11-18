@@ -397,7 +397,8 @@ public sealed class ResultStatusBar : Border
         TextBlock Txt(string s, bool primary = false)
         {
             texts.Add(s);
-            var t = new TextBlock { Text = s, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+            // 좁아져도 두 줄로 깨지지 않게 (Mac .fixedSize() · lineLimit(1))
+            var t = new TextBlock { Text = s, VerticalAlignment = VerticalAlignment.Center, FontSize = 12, TextWrapping = TextWrapping.NoWrap };
             if (!primary) t.Classes.Add("secondary");
             return t;
         }
@@ -689,7 +690,8 @@ public sealed class ResultPane : UserControl
     private readonly Border _filterDivider = Q.Divider();
     private readonly Border _editDivider = Q.Divider();
     private readonly GridSplitter _detailSplitter;
-    private double _detailWidth = 380;
+    /// 행 상세 폭: 끌어서 바꾸면 저장 (Mac Layout.rowDetailWidth)
+    private static double DetailWidth => Layout.Get(Layout.RowDetailWidth);
 
     // 결과 표에 마지막으로 보여 준 것 (같으면 다시 맞추지 않는다)
     private QueryResult? _shownResult;
@@ -739,9 +741,11 @@ public sealed class ResultPane : UserControl
         _detailSplitter = Q.ResizeHandle(rows: false);
         _detailSplitter.DragCompleted += (_, _) =>
         {
-            if (_body!.ColumnDefinitions[2].ActualWidth > 0) _detailWidth = _body.ColumnDefinitions[2].ActualWidth;
+            if (_body!.ColumnDefinitions[2].ActualWidth > 0) Layout.Set(Layout.RowDetailWidth, _body.ColumnDefinitions[2].ActualWidth);
         };
-        _body = new Grid { ColumnDefinitions = new ColumnDefinitions($"*,Auto,{_detailWidth}") };
+        _body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,0") };
+        _body.ColumnDefinitions[2].Width = new GridLength(DetailWidth);
+        Layout.OnReset(this, () => { if (Detail.IsVisible) _body.ColumnDefinitions[2].Width = new GridLength(DetailWidth); });
         _body.ColumnDefinitions[0].MinWidth = 200;
         _body.ColumnDefinitions[2].MinWidth = 240;
         _body.Children.Add(Grid);
@@ -768,6 +772,9 @@ public sealed class ResultPane : UserControl
         Put(Status, 10);
         Content = _layout;
     }
+
+    /// 행 상세 칸 폭 (테스트용)
+    public double DetailColumnWidth => _body.ColumnDefinitions[2].Width.Value;
 
     public QueryTab? Tab => _tab;
 
@@ -972,7 +979,7 @@ public sealed class ResultPane : UserControl
         var row = Grid.SelectedIds.Count == 1 && _showDetail && tab?.Result is { } ? Grid.Rows.FirstOrDefault(r => r.Id == Grid.SelectedIds[0]) : null;
         var show = row != null && tab?.Result is { } && _bodyShown;
         Detail.IsVisible = _detailSplitter.IsVisible = show;
-        _body.ColumnDefinitions[2].Width = show ? new GridLength(_detailWidth) : new GridLength(0);
+        _body.ColumnDefinitions[2].Width = show ? new GridLength(DetailWidth) : new GridLength(0);
         _body.ColumnDefinitions[2].MinWidth = show ? 240 : 0;
         if (!show || tab?.Result is not { } result) return;
         RowDetailPanel.RowEditor? editor = null;

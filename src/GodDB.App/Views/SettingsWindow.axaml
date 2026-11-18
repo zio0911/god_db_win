@@ -46,6 +46,14 @@
             </StackPanel>
           </Border>
 
+          <TextBlock Classes="groupTitle" Text="{l:T 안전}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <CheckBox x:Name="ConfirmDangerousBox" Content="{l:T 위험한 명령 실행 전 확인}" IsChecked="{Binding ConfirmDangerous}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T 'WHERE 없는 DELETE · UPDATE, TRUNCATE, DROP, Redis 의 FLUSHALL · FLUSHDB · KEYS 등을 실행하기 전에 한 번 더 물어봐요. 운영 접속에서 데이터를 바꾸는 확인은 이 설정과 관계없이 항상 떠요.'}"/>
+            </StackPanel>
+          </Border>
+
           <TextBlock Classes="groupTitle" Text="{l:T 로그}"/>
           <Border Classes="section">
             <StackPanel Spacing="6">
@@ -190,9 +198,10 @@
             <TextBlock Classes="title" Text="{Binding LicenseTitle}"/>
             <TextBlock Classes="secondary" Text="{Binding LicenseSubtitle}"/>
             <TextBlock TextWrapping="Wrap" Text="{Binding LicenseCopyright}"/>
-            <TextBlock Classes="caption" Text="{Binding LicenseNote}" IsVisible="{Binding HasLicenseNote}"/>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding LicenseNote}" IsVisible="{Binding HasLicenseNote}"/>
             <Button Classes="link" Content="{Binding LicenseUrl}" Command="{Binding OpenLicenseUrlCommand}"/>
-            <Border Background="{DynamicResource CodeBackground}" CornerRadius="6" Padding="10">
+            <TextBlock Classes="caption" Text="{l:T '전체 라이선스 문구는 위 링크에서 볼 수 있어요.'}" IsVisible="{Binding !HasLicenseText}"/>
+            <Border Background="{DynamicResource CodeBackground}" CornerRadius="6" Padding="10" IsVisible="{Binding HasLicenseText}">
               <SelectableTextBlock Text="{Binding LicenseText}" Classes="mono" FontSize="11" TextWrapping="Wrap"/>
             </Border>
           </StackPanel>

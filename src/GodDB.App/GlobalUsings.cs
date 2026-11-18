@@ -12,3 +12,4 @@ global using GodDB.Core.Schema;
 global using GodDB.Core.Sql;
 global using static GodDB.Core.L10n;
 global using LogLevel = GodDB.Core.Audit.LogLevel;
+global using Layout = GodDB.App.Infrastructure.Layout;

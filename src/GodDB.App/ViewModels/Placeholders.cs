@@ -14,10 +14,12 @@ public sealed partial class AssistantState : ObservableObject
     public const string VisibleKey = "GodDB.assistant.visible";
 
     [ObservableProperty] private bool _visible = Prefs.Get(VisibleKey, false);
-    [ObservableProperty] private double _width = 400;
+    /// 패널 폭 (끌어서 바꾸면 저장 — Mac Layout.assistantWidth)
+    [ObservableProperty] private double _width = GodDB.App.Infrastructure.Layout.Get(GodDB.App.Infrastructure.Layout.AssistantWidth);
     [ObservableProperty] private bool _includeSql = true;
 
     partial void OnVisibleChanged(bool value) => Prefs.Set(VisibleKey, value);
+    partial void OnWidthChanged(double value) => GodDB.App.Infrastructure.Layout.Set(GodDB.App.Infrastructure.Layout.AssistantWidth, value);
 
     private readonly Dictionary<string, AiChat> _chats = [];
     /// "접속ID|DB" → 테이블 통계

@@ -299,7 +299,7 @@ public class SafetyConfirmTests
     [Fact]
     public Task DeleteWithoutWhere_IsDangerous() => UiThread.Run(() =>
     {
-        var c = RunConfirm.ForRun("delete from t", "x", 0, false)!;
+        var c = RunConfirm.ForRun("delete from t", null, 0, false)!;
         Assert.True(c.NeedsConfirm);
         Assert.Equal("되돌리기 어려운 문장이 있어요", c.Title);
         Assert.Contains("WHERE 없는 DELETE", c.Message);
@@ -309,32 +309,93 @@ public class SafetyConfirmTests
     [Fact]
     public Task WholeScriptWithWrites_AsksBeforeRunningEverything() => UiThread.Run(() =>
     {
-        var c = RunConfirm.ForRun(null, "select 1;\nupdate t set a = 1 where id = 1;", 0, false)!;
+        // 전체 실행 (Ctrl+Alt+Enter): 변경 문이 섞여 있으면 확인
+        var c = RunConfirm.ForRunAll("select 1;\nupdate t set a = 1 where id = 1;", 0, false)!;
         Assert.True(c.WholeScript);
         Assert.True(c.NeedsConfirm);
         Assert.Equal("전체 2개 문장을 실행할까요?", c.Title);
         Assert.Equal("전체 실행", c.ConfirmButton);
+        Assert.Contains("한 문장만 실행하려면 그 문장에 커서를 두고 Ctrl+Enter 를 누르세요.", c.Message);
         // 선택 영역이 있으면 묻지 않는다
-        Assert.False(RunConfirm.ForRun("select 1;\nupdate t set a = 1 where id = 1;", "", 0, false)!.NeedsConfirm);
+        Assert.False(RunConfirm.ForRun("select 1;\nupdate t set a = 1 where id = 1;", null, 0, false)!.NeedsConfirm);
         // 읽기만 하는 여러 문장도 묻지 않는다
-        Assert.False(RunConfirm.ForRun(null, "select 1; select 2", 0, false)!.NeedsConfirm);
+        Assert.False(RunConfirm.ForRunAll("select 1; select 2", 0, false)!.NeedsConfirm);
+    });
+
+    /// Ctrl+Enter: 선택이 없으면 커서가 있는 문장 하나만, 전체 실행은 모든 문장 (Mac #98)
+    [Fact]
+    public Task RunCurrent_OnlyStatementAtCursor_RunAll_Everything() => UiThread.Run(() =>
+    {
+        var current = RunConfirm.ForRun(null, "update t set a = 1 where id = 1", 0, false)!;
+        Assert.Equal(["update t set a = 1 where id = 1"], current.Statements);
+        Assert.False(current.WholeScript);
+        Assert.False(current.NeedsConfirm);
+        var all = RunConfirm.ForRunAll("select 1;\nselect 2;", 0, false)!;
+        Assert.Equal(["select 1", "select 2"], all.Statements);
+        Assert.Null(RunConfirm.ForRun(null, null, 0, false));
+    });
+
+    /// 설정 > 일반 > 안전 > 위험한 명령 실행 전 확인 (Mac #103): 끄면 위험한 명령 확인만 건너뛰고, 운영 접속 변경 확인 · 전체 실행 확인은 그대로
+    [Fact]
+    public Task DangerSetting_Off_SkipsDangerConfirm_ProductionAndRunAllStay() => UiThread.Run(() =>
+    {
+        Assert.True(RunConfirm.ConfirmDangerous);   // 기본 켬
+        Prefs.Set(RunConfirm.ConfirmDangerousKey, false);
+        try
+        {
+            Assert.False(RunConfirm.ConfirmDangerous);
+            var c = RunConfirm.ForRun("drop table t", null, 0, production: false)!;
+            Assert.Empty(c.Dangerous);
+            Assert.False(c.NeedsConfirm);
+            // 운영 접속은 설정과 관계없이 항상 확인
+            var p = RunConfirm.ForRun("delete from t", null, 0, production: true)!;
+            Assert.True(p.NeedsConfirm);
+            Assert.Equal("운영 접속에서 데이터를 바꿔요", p.Title);
+            // 전체 실행의 변경 문 확인도 그대로
+            Assert.True(RunConfirm.ForRunAll("select 1; truncate t", 0, false)!.NeedsConfirm);
+        }
+        finally { Prefs.Remove(RunConfirm.ConfirmDangerousKey); }
+        Assert.True(RunConfirm.ForRun("drop table t", null, 0, false)!.NeedsConfirm);
+    });
+
+    /// 켜고 끈 기록은 상태창 · 감사 로그(설정)에 남는다
+    [Fact]
+    public Task DangerSetting_ToggleIsLogged() => UiThread.Run(() =>
+    {
+        var app = new TestEnv().NewApp();
+        var vm = new SettingsViewModel(app);
+        Assert.True(vm.ConfirmDangerous);
+        try
+        {
+            vm.ConfirmDangerous = false;
+            Assert.False(Prefs.Get(RunConfirm.ConfirmDangerousKey, true));
+            var off = app.Logs[^1];
+            Assert.Equal(LogLevel.Warning, off.Level);
+            Assert.Equal("위험한 명령 실행 전 확인을 껐어요", off.Message);
+            Assert.Equal(AuditAction.Settings, off.Audit?.Action);
+            Assert.Equal("위험한 명령 확인 끔", off.Audit?.Result);
+            vm.ConfirmDangerous = true;
+            Assert.Equal("위험한 명령 실행 전 확인을 켰어요", app.Logs[^1].Message);
+            Assert.Equal("위험한 명령 확인 켬", app.Logs[^1].Audit?.Result);
+        }
+        finally { Prefs.Remove(RunConfirm.ConfirmDangerousKey); }
     });
 
     [Fact]
     public Task Production_WritesAlwaysConfirm_ReadsAndExplainDoNot() => UiThread.Run(() =>
     {
-        var w = RunConfirm.ForRun("update t set a = 1 where id = 1", "", 0, production: true)!;
+        var w = RunConfirm.ForRun("update t set a = 1 where id = 1", null, 0, production: true)!;
         Assert.True(w.NeedsConfirm);
         Assert.Equal("운영 접속에서 데이터를 바꿔요", w.Title);
         Assert.Contains("데이터를 바꾸는 문장 1개", w.Message);
-        Assert.False(RunConfirm.ForRun("select 1", "", 0, production: true)!.NeedsConfirm);
+        Assert.False(RunConfirm.ForRun("select 1", null, 0, production: true)!.NeedsConfirm);
         Assert.False(RunConfirm.ForExplain("update t set a = 1 where id = 1", 0).NeedsConfirm);
     });
 
     [Fact]
     public Task PendingEdits_Confirm() => UiThread.Run(() =>
     {
-        var c = RunConfirm.ForRun("select 1", "", discardedEdits: 2, false)!;
+        var c = RunConfirm.ForRun("select 1", null, discardedEdits: 2, false)!;
         Assert.True(c.NeedsConfirm);
         Assert.Equal("적용하지 않은 편집이 있어요", c.Title);
         Assert.Contains("2건은 사라져요", c.Message);

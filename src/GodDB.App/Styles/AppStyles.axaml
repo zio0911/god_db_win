@@ -137,7 +137,7 @@
   </Style>
 
   <!-- 도구 막대: 자리가 모자라면 아이콘만 (AdaptiveBar) -->
-  <Style Selector="c|AdaptiveBar:compact :is(Control).label">
+  <Style Selector="ScrollViewer.adaptiveBar:compact :is(Control).label">
     <Setter Property="IsVisible" Value="False"/>
   </Style>
 </Styles>

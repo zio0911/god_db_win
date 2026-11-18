@@ -27,7 +27,6 @@ public partial class MainWindow : Window
     private CompareView? _compareView;
     private ModelingView? _modelingView;
     private readonly Dictionary<Guid, RedisWorkspaceView> _redisViews = [];
-    private double _logHeight = 220;
     private SettingsWindow? _settings;
     private readonly Dictionary<string, Window> _sheets = [];
     private bool _closingConfirmed;
@@ -53,7 +52,20 @@ public partial class MainWindow : Window
         StatusBar.Tapped += (_, _) => app.ToggleLog();
 
         app.PropertyChanged += OnAppChanged;
-        app.Assistant.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AssistantState.Visible)) UpdateAssistant(); };
+        app.Assistant.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AssistantState.Visible)) UpdateAssistant();
+            // 레이아웃 초기화 등으로 폭이 바뀌면 열린 패널에 바로 반영
+            else if (e.PropertyName == nameof(AssistantState.Width) && Assistant.IsVisible)
+                Main.ColumnDefinitions[2].Width = new GridLength(Math.Clamp(app.Assistant.Width, 320, 760));
+        };
+        // 끌어서 바꾼 상태창 높이 · AI 어시스턴트 폭은 저장해서 다음에도 쓴다 (Mac Layout)
+        Layout.SaveOnDrag(LogSplitter, Right.RowDefinitions[2], Layout.LogHeight);
+        AssistantSplitter.DragCompleted += (_, _) =>
+        {
+            if (Main.ColumnDefinitions[2].ActualWidth > 0) app.Assistant.Width = Main.ColumnDefinitions[2].ActualWidth;
+        };
+        Layout.OnReset(this, () => { if (App.ShowLog) Right.RowDefinitions[2].Height = new GridLength(Layout.Get(Layout.LogHeight)); });
         app.ConnectionChanged += _ => { UpdateBadge(); UpdateContent(); UpdateModeButtons(); };
         app.WindowRequested += OnWindowRequested;
         L10n.LanguageChanged += () => Dispatcher.UIThread.Post(() => { UpdateBadge(); UpdateStatus(); BuildMenu(); });
@@ -179,9 +191,9 @@ public partial class MainWindow : Window
     {
         var show = App.ShowLog;
         var rows = Right.RowDefinitions;
-        if (!show && LogPanel.IsVisible && rows[2].ActualHeight > 0) _logHeight = rows[2].ActualHeight;
+        if (!show && LogPanel.IsVisible && rows[2].ActualHeight > 0) Layout.Set(Layout.LogHeight, rows[2].ActualHeight);
         rows[1].Height = new GridLength(show ? 4 : 0);
-        rows[2].Height = new GridLength(show ? _logHeight : 0);
+        rows[2].Height = new GridLength(show ? Layout.Get(Layout.LogHeight) : 0);
         rows[2].MinHeight = show ? 100 : 0;
         LogSplitter.IsVisible = show;
         LogPanel.IsVisible = show;
@@ -390,6 +402,11 @@ public partial class MainWindow : Window
             if (enabled != null) _enablers.Add((m, enabled));
             return m;
         }
+        static MenuItem Tip(MenuItem m, string tip)
+        {
+            ToolTip.SetTip(m, Tr(tip));
+            return m;
+        }
         MenuItem Top(string key, params Control[] items)
         {
             var m = new MenuItem();
@@ -446,7 +463,10 @@ public partial class MainWindow : Window
             Item("모델링", () => SetMode(MainMode.Modeling)),
             new Separator(),
             Item("상태창", app.ToggleLog, "Ctrl+Shift+L"),
-            Item("AI 어시스턴트", () => { if (app.AssistantEnabled) app.Assistant.Visible = !app.Assistant.Visible; }, "Ctrl+Shift+I", () => app.AssistantEnabled));
+            Item("AI 어시스턴트", () => { if (app.AssistantEnabled) app.Assistant.Visible = !app.Assistant.Visible; }, "Ctrl+Shift+I", () => app.AssistantEnabled),
+            new Separator(),
+            // Mac 보기 > 레이아웃 초기화 (CommandGroup(after: .sidebar))
+            Tip(Item("레이아웃 초기화", () => Layout.Reset(app)), "끌어서 바꾼 상태창 · 편집기 · 패널 크기를 처음 크기로 되돌려요"));
 
         var help = Top("도움말",
             Item("새로운 기능", app.OpenReleaseNotes),
