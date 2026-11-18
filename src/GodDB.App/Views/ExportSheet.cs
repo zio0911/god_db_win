@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
@@ -43,7 +44,7 @@ public sealed class ExportSheet : Window
         var grid = new Avalonia.Controls.Primitives.UniformGrid { Columns = 2 };
         foreach (var f in ExportFormats.All)
         {
-            var card = new SheetCard(FormatIcon(f), f.Title(), f.Note()) { Margin = new Thickness(0, 0, 8, 8) };
+            var card = new SheetCard(FormatIconControl(f), f.Title(), f.Note()) { Margin = new Thickness(0, 0, 8, 8) };
             card.Click += (_, _) => SetFormat(f);
             _formatCards[f] = card;
             grid.Children.Add(card);
@@ -51,9 +52,9 @@ public sealed class ExportSheet : Window
         grid.Margin = new Thickness(0, 0, -8, -8);
 
         // 범위
-        _allCard = new SheetCard("⧉", Tr("쿼리 전체 데이터"), r.FetchAllNote) { IsEnabled = r.CanFetchAll };
+        _allCard = new SheetCard(new SymbolIcon(Symbol.Stack), Tr("쿼리 전체 데이터"), r.FetchAllNote) { IsEnabled = r.CanFetchAll };
         _allCard.Click += (_, _) => SetFetchAll(true);
-        _visibleCard = new SheetCard("▭", Tr("지금 보이는 행만"), r.VisibleNote);
+        _visibleCard = new SheetCard(new SymbolIcon(Symbol.Rectangles), Tr("지금 보이는 행만"), r.VisibleNote);
         _visibleCard.Click += (_, _) => SetFetchAll(false);
         _unstable = new TextBlock
         {
@@ -74,7 +75,7 @@ public sealed class ExportSheet : Window
         {
             Padding = new Thickness(22),
             Child = Ui.Stack(18,
-                Ui.Stack(2, Ui.Headline("⇩ " + Tr("결과 내보내기")), Ui.Text(r.Subtitle, "secondary")),
+                Ui.Stack(2, Ui.HStack(8, new SymbolIcon(Symbol.Download) { Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center }, Ui.Headline(Tr("결과 내보내기"))), Ui.Text(r.Subtitle, "secondary")),
                 Section(Tr("형식"), grid),
                 Section(Tr("범위"), Ui.Stack(8, _allCard, _visibleCard), _unstable),
                 OptionsPanel,
@@ -83,17 +84,18 @@ public sealed class ExportSheet : Window
         Refresh();
     }
 
-    internal const string TableIcon = "[tablecells]", TableFillIcon = "[tablecells.fill]";
-
-    private static string FormatIcon(ExportFormat f) => f switch
+    /// Mac 형식 카드 아이콘: doc.text · tablecells · tablecells.fill · curlybraces · chevron…slash · text.alignleft
+    private static Control FormatIconControl(ExportFormat f) => f switch
     {
-        ExportFormat.Csv => "≡",
-        ExportFormat.Tsv => TableIcon,
-        ExportFormat.Xlsx => TableFillIcon,
-        ExportFormat.Json => "{ }",
-        ExportFormat.Sql => "</>",
-        _ => "¶",
+        ExportFormat.Tsv => new TableCellsIcon { Width = 17, Height = 17, Foreground = null },
+        ExportFormat.Xlsx => new TableCellsIcon { Width = 17, Height = 17, Filled = true, Foreground = null },
+        ExportFormat.Json => new SymbolIcon(Symbol.Braces),
+        ExportFormat.Sql => new SymbolIcon(Symbol.Code),
+        ExportFormat.Markdown => new SymbolIcon(Symbol.AlignLeft),
+        _ => new SymbolIcon(Symbol.Doc),
     };
+
+
 
     private static StackPanel Section(string title, params Control[] content)
     {
@@ -166,27 +168,28 @@ public sealed class ExportSheet : Window
 /// 고를 수 있는 카드 한 칸 (선택 표시 + 아이콘 + 제목 + 설명). Mac ExportSheet.card
 public sealed class SheetCard : Button
 {
-    private readonly TextBlock _radio = new() { Width = 16, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Avalonia.Controls.Shapes.Ellipse _radioRing = new() { Width = 16, Height = 16, StrokeThickness = 1.2 };
+    private readonly Avalonia.Controls.Shapes.Ellipse _radioDot = new() { Width = 6, Height = 6, Fill = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Panel _radio = new() { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _icon;
-    private readonly GodDB.App.Controls.TableCellsIcon? _tableIcon;
+    private readonly Control _iconControl;
     private bool _selected;
 
     protected override Type StyleKeyOverride => typeof(Button);
 
-    public SheetCard(string icon, string title, string note)
+    public SheetCard(Control icon, string title, string note)
     {
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         Padding = new Thickness(10, 8);
         CornerRadius = new CornerRadius(8);
         BorderThickness = new Thickness(1);
-        _icon = new TextBlock { Text = icon, Width = 26, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
-        if (icon is ExportSheet.TableIcon or ExportSheet.TableFillIcon)
-        {
-            _icon.Text = "";
-            _tableIcon = new GodDB.App.Controls.TableCellsIcon { Width = 18, Height = 18, Filled = icon == ExportSheet.TableFillIcon, Foreground = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Center };
-            _icon.Inlines = [new Avalonia.Controls.Documents.InlineUIContainer(_tableIcon)];
-        }
+        _iconControl = icon;
+        icon.Width = double.IsNaN(icon.Width) ? 17 : icon.Width;
+        icon.Height = double.IsNaN(icon.Height) ? 17 : icon.Height;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        _icon = new TextBlock { Width = 26, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        _icon.Inlines = [new Avalonia.Controls.Documents.InlineUIContainer(icon)];
         var texts = Ui.Stack(1,
             new TextBlock { Text = title, FontWeight = FontWeight.Medium, TextTrimming = TextTrimming.CharacterEllipsis },
             new TextBlock { Text = note, Classes = { "caption" }, TextWrapping = TextWrapping.Wrap, MaxLines = 2 });
@@ -209,10 +212,17 @@ public sealed class SheetCard : Button
         {
             _selected = value;
             var accent = Color.Parse("#0A84FF");
-            _radio.Text = value ? "◉" : "○";
-            _radio.Foreground = value ? new SolidColorBrush(accent) : null;
-            _icon.Foreground = value ? new SolidColorBrush(accent) : null;
-            if (_tableIcon != null) _tableIcon.Foreground = value ? new SolidColorBrush(accent) : Brushes.Gray;
+            if (_radio.Children.Count == 0) { _radio.Children.Add(_radioRing); _radio.Children.Add(_radioDot); }
+            _radioRing.Fill = value ? new SolidColorBrush(accent) : Brushes.Transparent;
+            _radioRing.Stroke = value ? new SolidColorBrush(accent) : Brushes.Gray;
+            _radioDot.IsVisible = value;
+            // 아이콘: 고르면 강조 파랑, 아니면 글자 색 (Mac foregroundStyle)
+            IBrush? fg = value ? new SolidColorBrush(accent) : null;
+            switch (_iconControl)
+            {
+                case SymbolIcon si: si.Foreground = fg; if (fg == null) si.ClearValue(SymbolIcon.ForegroundProperty); break;
+                case TableCellsIcon ti: ti.Foreground = fg ?? Foreground ?? Brushes.Black; break;
+            }
             Background = value ? new SolidColorBrush(accent, 0.10) : Brushes.Transparent;
             BorderBrush = value ? new SolidColorBrush(accent) : new SolidColorBrush(Colors.Gray, 0.25);
             BorderThickness = new Thickness(value ? 1.5 : 1);

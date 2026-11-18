@@ -20,6 +20,8 @@ public partial class SidebarView : UserControl
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        // TreeViewItem 이 더블클릭을 펼치기·접기로 처리하고 Handled 로 표시하므로, 처리된 이벤트도 받아야 테이블 데이터를 연다
+        TableTree.AddHandler(DoubleTappedEvent, OnTableDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
     }
 

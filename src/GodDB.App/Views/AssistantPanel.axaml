@@ -18,7 +18,7 @@
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
           <Button x:Name="NewChat" Classes="hover" Content="＋💬" ToolTip.Tip="{l:T '새 대화 (지금 대화는 기록에 남아요)'}"/>
-          <Button x:Name="HistoryButton" Classes="hover" Content="🕘" ToolTip.Tip="{l:T '이전 대화 (90일 보관)'}"/>
+          <Button x:Name="HistoryButton" Classes="hover" ToolTip.Tip="{l:T '이전 대화 (90일 보관)'}"/>
           <Button x:Name="ClosePanel" Classes="hover" Content="⇥" ToolTip.Tip="{l:T 패널 닫기}"/>
         </StackPanel>
       </Grid>

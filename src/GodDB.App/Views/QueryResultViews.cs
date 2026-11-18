@@ -13,7 +13,7 @@ using GodDB.App.ViewModels;
 namespace GodDB.App.Views;
 
 /// 쿼리 화면에서 코드로 만드는 작은 조각 도우미
-internal static class Q
+public static class Q
 {
     public static readonly IBrush Orange = new SolidColorBrush(Color.Parse("#FF9500"));
     public static readonly IBrush Green = new SolidColorBrush(Color.Parse("#34C759"));
@@ -33,6 +33,21 @@ internal static class Q
     public static Button B(string text, Action onClick, string? tip = null, params string[] classes)
     {
         var b = new Button { Content = text, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var c in classes) b.Classes.Add(c);
+        if (tip != null) ToolTip.SetTip(b, tip);
+        b.Click += (_, _) => onClick();
+        return b;
+    }
+
+    /// 아이콘 + 글자 단추. 도구 막대가 좁으면(:compact) 글자("label")만 숨고 아이콘은 남는다 (Mac Label + AdaptiveBar)
+    public static Button B(GodDB.App.Controls.Symbol symbol, string text, Action onClick, string? tip = null, params string[] classes)
+    {
+        var label = new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, Classes = { "label" } };
+        var b = new Button
+        {
+            Content = H(5, new GodDB.App.Controls.SymbolIcon(symbol) { VerticalAlignment = VerticalAlignment.Center }, label),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         foreach (var c in classes) b.Classes.Add(c);
         if (tip != null) ToolTip.SetTip(b, tip);
         b.Click += (_, _) => onClick();
@@ -470,7 +485,7 @@ public sealed class ResultStatusBar : Border
         }
         else if (result.Columns.Count > 0)
         {
-            var exp = Q.B("⤓ " + Tr("내보내기"), () => OnExport?.Invoke(),
+            var exp = Q.B(GodDB.App.Controls.Symbol.Download, Tr("내보내기"), () => OnExport?.Invoke(),
                 Tr("결과를 파일로 저장: CSV · TSV · Excel · JSON · SQL INSERT · Markdown (보이는 행 또는 쿼리 전체 데이터)"), "hover");
             exp.IsEnabled = !loading;
             right.Children.Add(exp);

@@ -140,7 +140,7 @@
           </StackPanel>
 
           <TreeView x:Name="TableTree" ItemsSource="{Binding TableNodes}" SelectionMode="Multiple"
-                    SelectionChanged="OnTableSelectionChanged" DoubleTapped="OnTableDoubleTapped">
+                    SelectionChanged="OnTableSelectionChanged">
             <TreeView.DataTemplates>
               <TreeDataTemplate DataType="vm:TableNodeViewModel" ItemsSource="{Binding Children}">
                 <StackPanel Orientation="Horizontal" Spacing="5" ToolTip.Tip="{Binding Tip}" Background="Transparent">
