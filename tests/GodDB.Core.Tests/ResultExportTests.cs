@@ -140,8 +140,8 @@ public class ResultExportTests
         Assert.True(req.Stable);
         Assert.Equal(new ResultSort("member_id", true), req.Sort);
         Assert.Equal("tb_member", req.DefaultTable);
-        Assert.Equal("tb_member_20261118_053005", req.BaseName);   // Mac 과 같이 UTC
-        Assert.Equal("tb_member_20261118_053005.md", req.FileName(ExportFormat.Markdown));
+        Assert.Equal("tb_member_20261118_143005", req.BaseName);   // KST
+        Assert.Equal("tb_member_20261118_143005.md", req.FileName(ExportFormat.Markdown));
 
         result.HasMore = false;
         result.Sql = "SELECT 1 AS a FROM x JOIN y";
@@ -194,5 +194,17 @@ public class ResultExportTests
             Assert.False(File.Exists(path));   // 취소하면 쓰던 파일 삭제
         }
         finally { File.Delete(path); }
+    }
+}
+
+public class ExportFileNameStampTests
+{
+    [Fact]
+    public void StampIsKst()
+    {
+        // UTC 2026-11-13 05:46:25 = KST 14:46:25
+        Assert.Equal("20261113_144625", GodDB.Core.Results.ExportRequest.Stamp(new DateTimeOffset(2026, 11, 13, 5, 46, 25, TimeSpan.Zero)));
+        // 날짜가 넘어가는 경우: UTC 11-13 16:00 = KST 11-14 01:00
+        Assert.Equal("20261114_010000", GodDB.Core.Results.ExportRequest.Stamp(new DateTimeOffset(2026, 11, 13, 16, 0, 0, TimeSpan.Zero)));
     }
 }

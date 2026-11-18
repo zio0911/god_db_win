@@ -65,8 +65,10 @@ public sealed record ExportRequest
         };
     }
 
-    /// 파일 이름 시각 yyyyMMdd_HHmmss. Mac 의 Date.ISO8601FormatStyle 은 기본 시간대가 GMT 라 UTC 로 쓴다 (같은 이름이 나오게).
-    public static string Stamp(DateTimeOffset now) => now.UtcDateTime.ToString("yyyyMMdd'_'HHmmss", CultureInfo.InvariantCulture);
+    /// 파일 이름 시각 yyyyMMdd_HHmmss, 한국 표준시(KST, UTC+9 · 서머타임 없음) 기준.
+    /// (Mac 판은 UTC 로 찍혀 한국 시각보다 9시간 늦게 보였다 — Windows 판은 사용자 요청으로 KST)
+    public static string Stamp(DateTimeOffset now) =>
+        now.ToOffset(TimeSpan.FromHours(9)).ToString("yyyyMMdd'_'HHmmss", CultureInfo.InvariantCulture);
 
     /// 저장 창 기본 파일 이름
     public string FileName(ExportFormat f) => BaseName + "." + f.FileExtension();
