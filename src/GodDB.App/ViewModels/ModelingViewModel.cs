@@ -77,6 +77,8 @@ public sealed partial class ModelingViewModel : ObservableObject
         ReloadRows();
         // 리버스 엔지니어링 창이 모델을 넣거나(창이 닫힘) 다른 모드에서 돌아오면 목록을 다시 읽는다
         App.PropertyChanged += OnAppChanged;
+        // AI 어시스턴트가 물리명을 적용하면 바로 다시 그린다
+        App.ModelEditedExternally += _ => Refresh();
     }
 
     private void OnAppChanged(object? sender, PropertyChangedEventArgs e)
