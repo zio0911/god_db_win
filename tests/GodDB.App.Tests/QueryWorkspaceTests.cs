@@ -24,6 +24,9 @@ public class SqlEditorTests
         new("tb_order", columns: [new ColumnMeta("order_id", "int", false), new ColumnMeta("member_id", "int", true)]),
     ];
 
+    internal static (Window, SqlEditor) HostFor(string text = "") => Host(text);
+    internal static void PressTabFor(SqlEditor editor) => PressTab(editor);
+
     private static (Window, SqlEditor) Host(string text = "")
     {
         var editor = new SqlEditor { SchemaProvider = () => (Tables, []) };

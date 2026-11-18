@@ -68,7 +68,15 @@ public partial class MainWindow : Window
         Layout.OnReset(this, () => { if (App.ShowLog) Right.RowDefinitions[2].Height = new GridLength(Layout.Get(Layout.LogHeight)); });
         app.ConnectionChanged += _ => { UpdateBadge(); UpdateContent(); UpdateModeButtons(); };
         app.WindowRequested += OnWindowRequested;
-        L10n.LanguageChanged += () => Dispatcher.UIThread.Post(() => { UpdateBadge(); UpdateStatus(); BuildMenu(); });
+        L10n.LanguageChanged += () => Dispatcher.UIThread.Post(() =>
+        {
+            UpdateBadge(); UpdateStatus(); BuildMenu();
+            // Mac 처럼 화면 전체를 새 언어로 다시 그린다 (코드로 만든 화면은 만들 때 한 번 번역되므로 새로 만든다).
+            // 접속 · 탭 · 입력 중인 SQL 은 AppState 에 있어 그대로 남는다.
+            _queryView = null; _compareView = null; _modelingView = null; _redisViews.Clear();
+            ContentHost.Content = null;
+            UpdateContent();
+        });
 
         BuildMenu();
         UpdateBadge();

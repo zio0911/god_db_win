@@ -27,6 +27,12 @@ public partial class AssistantPanel : UserControl
     {
         InitializeComponent();
         HistoryButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History);
+        // 언어를 바꾸면 코드로 그린 부분(보낼 정보 · 자주 쓰는 질문 · 안내 · 대화)을 새 언어로
+        GodDB.Core.L10n.LanguageChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (DataContext == null) return;
+            try { DrawContext(); DrawChips(); UpdateHint(); UpdateInput(); DrawTranscript(); } catch { }
+        });
         InputBox.AcceptsReturn = true;
         DataContextChanged += (_, _) =>
         {
