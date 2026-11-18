@@ -164,7 +164,8 @@ public sealed class QueryTabView : UserControl
         _split.RowDefinitions[0].MinHeight = 80;
         _split.RowDefinitions[2].MinHeight = 140;
         _split.Children.Add(top);
-        var splitter = new GridSplitter { ResizeDirection = GridResizeDirection.Rows, Height = 5, Classes = { "divider" } };
+        // Mac ResizeHandle(axis: .horizontal): 편집기 기본 높이 220, 80 ~ (전체 - 140)
+        var splitter = Q.ResizeHandle(rows: true);
         Grid.SetRow(splitter, 1);
         _split.Children.Add(splitter);
         Grid.SetRow(Results, 2);

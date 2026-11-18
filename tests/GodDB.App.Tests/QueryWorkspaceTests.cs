@@ -656,11 +656,14 @@ public class QueryWorkspaceViewTests
     });
 }
 
-/// 화면 확인에서 찾은 문제: Redis 영역이 SQL 접속 · 미접속에도 보이던 것 (헤드리스에서는 재현되지 않아 실제 앱으로도 확인)
+/// 화면 확인에서 찾은 문제: Redis 영역이 SQL 접속 · 미접속에도 보이던 것.
+/// SidebarView.BindRedis() 가 영역의 DataContext 를 null(또는 RedisWorkspace)로 직접 넣기 때문에, 영역 자신에 건
+/// IsVisible="{Binding ShowRedis}" 는 값을 못 얻고 기본값(보임)으로 돌아간다. 보이기 조건은 바깥 틀에 걸어야 한다.
+/// (예전 테스트는 void 로 선언돼 UiThread.Run 의 Task 를 버려서 실패가 드러나지 않았다 — Task 를 돌려준다)
 public class SidebarRedisVisibilityTests
 {
     [Fact]
-    public void RedisSectionHiddenWhenNotRedis() => UiThread.Run(() =>
+    public Task RedisSectionHiddenWhenNotRedis() => UiThread.Run(() =>
     {
         var env = new TestEnv();
         env.Store.Save([TestEnv.Profile("a"), TestEnv.Profile("r", GodDB.Core.DatabaseKind.Redis)]);
@@ -669,12 +672,24 @@ public class SidebarRedisVisibilityTests
         var window = new Avalonia.Controls.Window { Content = view, Width = 300, Height = 800 };
         window.Show();
         var section = view.FindControl<GodDB.App.Views.RedisSidebarSection>("RedisSection")!;
+        var search = view.FindControl<GodDB.App.Views.RedisKeySearchBar>("RedisSearch")!;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        // 실제 앱과 같은 조건: BindRedis 가 영역의 DataContext 를 직접 null 로 넣었다
+        Assert.True(section.IsSet(Avalonia.StyledElement.DataContextProperty));
+        Assert.Null(section.DataContext);
         // 접속 안 됨: Redis 영역도 "키 불러오는 중…" 도 보이면 안 된다
         Assert.False(section.IsEffectivelyVisible);
+        Assert.False(search.IsEffectivelyVisible);
         app.SelectedProfileId = app.Profiles[1].Id;   // Redis 접속을 골라도 연결 전이면 숨김
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.False(section.IsEffectivelyVisible);
+        // SQL 접속: 스키마 트리만, Redis 영역은 숨김
+        app.SelectedProfileId = app.Profiles[0].Id;
+        TestEnv.FakeConnect(app, app.Profiles[0].Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        Assert.False(section.IsEffectivelyVisible);
+        Assert.False(search.IsEffectivelyVisible);
         window.Close();
     });
 }

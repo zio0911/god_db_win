@@ -244,7 +244,13 @@ public partial class RedisWorkspace : ObservableObject
         OnPropertyChanged(nameof(SelectedDatabase));
     }
 
-    partial void OnDatabasesChanged(IReadOnlyList<RedisDbItem> value) => OnPropertyChanged(nameof(SelectedDatabase));
+    /// 목록이 바뀐 '뒤에' 선택을 다시 알린다. (OnDatabasesChanged 는 Databases 변경 알림 전에 불려서, 콤보 상자가
+    /// 아직 예전 목록일 때 선택을 받고 → 새 목록이 들어오며 선택을 지워 접속 직후 DB 칸이 비어 보였다. Mac 은 현재 DB 가 바로 보인다)
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName == nameof(Databases)) OnPropertyChanged(nameof(SelectedDatabase));
+    }
 
     /// DB 선택 칸 (바꾸면 SELECT)
     public RedisDbItem? SelectedDatabase
