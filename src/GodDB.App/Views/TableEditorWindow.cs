@@ -201,7 +201,7 @@ public sealed class TableEditorWindow : Window
         _tree.Children.Clear();
         var t = Vm.Table;
 
-        var head = Ui.HStack(6, Glyph(Glyphs.Table, "BlueBrush"), new TextBlock { Text = t.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center },
+        var head = Ui.HStack(6, new GodDB.App.Controls.TableCellsIcon { VerticalAlignment = VerticalAlignment.Center }, new TextBlock { Text = t.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center },
                              new TextBlock { Text = $"{Vm.Database} [{Vm.ConnectionName}]", Classes = { "caption" }, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
         if (Vm.CommentChanged) head.Children.Add(Dot());
         _tree.Children.Add(Row(head, new Node.Table(), 0));
@@ -349,7 +349,9 @@ public sealed class TableEditorWindow : Window
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10, 5),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Child = Ui.HStack(6, new TextBlock { Text = icon, VerticalAlignment = VerticalAlignment.Center }, _inspectorHeader),
+            Child = Ui.HStack(6, icon == Glyphs.Table
+                ? new GodDB.App.Controls.TableCellsIcon { VerticalAlignment = VerticalAlignment.Center }
+                : new TextBlock { Text = icon, VerticalAlignment = VerticalAlignment.Center }, _inspectorHeader),
         });
     }
 

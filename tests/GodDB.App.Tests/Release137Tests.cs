@@ -527,3 +527,21 @@ public class CompareChoiceTests
         w.Close();
     });
 }
+
+/// 테이블 아이콘: Mac "tablecells" 처럼 파란 2열 × 3행 격자 (글자 ▦ 를 쓰지 않음)
+public class TableCellsIconTests
+{
+    [Fact]
+    public Task SidebarAndQuickOpenUseGridIcon() => UiThread.Run(() =>
+    {
+        var icon = new GodDB.App.Controls.TableCellsIcon();
+        Assert.Equal(16, icon.Width);
+        var blue = Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(icon.Foreground);
+        Assert.True(blue.Color.B > 200 && blue.Color.R < 60);   // 강조 파랑
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "VERSION"))) dir = dir.Parent;
+        var xaml = File.ReadAllText(Path.Combine(dir!.FullName, "src/GodDB.App/Views/SidebarView.axaml"));
+        Assert.Contains("TableCellsIcon", xaml);
+        Assert.DoesNotContain("Text=\"▦\"", xaml);
+    });
+}

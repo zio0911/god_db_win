@@ -315,7 +315,7 @@ public sealed class DiagramCard : Border
             FontStyle = t.Missing && !physical ? FontStyle.Italic : FontStyle.Normal,
         };
         if (physical) title.FontFamily = Mono;
-        title.Inlines = [new Run(Glyphs.Table + "  ") { FontSize = 11 }, new Run(t.Main)];
+        title.Inlines = [new InlineUIContainer(new GodDB.App.Controls.TableCellsIcon { Width = 12, Height = 12, Foreground = Brushes.White, Margin = new Thickness(0, 0, 6, -1) }), new Run(t.Main)];
         if (t.Sub is { } sub) title.Inlines.Add(new Run("  " + sub) { FontSize = 10, FontFamily = Mono, FontWeight = FontWeight.Normal, Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 255, 255, 255)) });
         _header.Child = title;
 

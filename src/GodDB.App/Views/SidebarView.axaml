@@ -159,7 +159,7 @@
                       <MenuItem Header="{l:T '삭제 (DROP)…'}" Command="{Binding DropCommand}" IsEnabled="{Binding CanModify}" Foreground="{DynamicResource RedBrush}"/>
                     </ContextMenu>
                   </StackPanel.ContextMenu>
-                  <TextBlock Text="▦" Classes="secondary" VerticalAlignment="Center"/>
+                  <c:TableCellsIcon Width="16" Height="16" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </StackPanel>
               </TreeDataTemplate>

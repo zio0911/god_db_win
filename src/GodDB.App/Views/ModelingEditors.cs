@@ -122,7 +122,7 @@ public sealed class ModelTableEditor : DockPanel
             [Tr("컬럼 %@", t.Columns.Count), Tr("인덱스 %@", t.Indexes.Count), Tr("관계 %@", relCount), Tr("설명")],
             _vm.EditorTab, i => { _vm.EditorTab = i; Rebuild(); });
         header.Children.Add(Ui.HStack(10,
-            new TextBlock { Text = Glyphs.Table, Foreground = new SolidColorBrush(ModelCanvas.Accent), VerticalAlignment = VerticalAlignment.Center },
+            new GodDB.App.Controls.TableCellsIcon { Foreground = new SolidColorBrush(ModelCanvas.Accent), VerticalAlignment = VerticalAlignment.Center },
             logical, physical, tabs));
         DockPanel.SetDock(header, Dock.Top);
         Children.Add(header);

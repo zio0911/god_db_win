@@ -83,11 +83,13 @@ public sealed class ExportSheet : Window
         Refresh();
     }
 
+    internal const string TableIcon = "[tablecells]", TableFillIcon = "[tablecells.fill]";
+
     private static string FormatIcon(ExportFormat f) => f switch
     {
         ExportFormat.Csv => "≡",
-        ExportFormat.Tsv => "⇥",
-        ExportFormat.Xlsx => "▦",
+        ExportFormat.Tsv => TableIcon,
+        ExportFormat.Xlsx => TableFillIcon,
         ExportFormat.Json => "{ }",
         ExportFormat.Sql => "</>",
         _ => "¶",
@@ -166,6 +168,7 @@ public sealed class SheetCard : Button
 {
     private readonly TextBlock _radio = new() { Width = 16, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _icon;
+    private readonly GodDB.App.Controls.TableCellsIcon? _tableIcon;
     private bool _selected;
 
     protected override Type StyleKeyOverride => typeof(Button);
@@ -178,6 +181,12 @@ public sealed class SheetCard : Button
         CornerRadius = new CornerRadius(8);
         BorderThickness = new Thickness(1);
         _icon = new TextBlock { Text = icon, Width = 26, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        if (icon is ExportSheet.TableIcon or ExportSheet.TableFillIcon)
+        {
+            _icon.Text = "";
+            _tableIcon = new GodDB.App.Controls.TableCellsIcon { Width = 18, Height = 18, Filled = icon == ExportSheet.TableFillIcon, Foreground = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Center };
+            _icon.Inlines = [new Avalonia.Controls.Documents.InlineUIContainer(_tableIcon)];
+        }
         var texts = Ui.Stack(1,
             new TextBlock { Text = title, FontWeight = FontWeight.Medium, TextTrimming = TextTrimming.CharacterEllipsis },
             new TextBlock { Text = note, Classes = { "caption" }, TextWrapping = TextWrapping.Wrap, MaxLines = 2 });
@@ -203,6 +212,7 @@ public sealed class SheetCard : Button
             _radio.Text = value ? "◉" : "○";
             _radio.Foreground = value ? new SolidColorBrush(accent) : null;
             _icon.Foreground = value ? new SolidColorBrush(accent) : null;
+            if (_tableIcon != null) _tableIcon.Foreground = value ? new SolidColorBrush(accent) : Brushes.Gray;
             Background = value ? new SolidColorBrush(accent, 0.10) : Brushes.Transparent;
             BorderBrush = value ? new SolidColorBrush(accent) : new SolidColorBrush(Colors.Gray, 0.25);
             BorderThickness = new Thickness(value ? 1.5 : 1);

@@ -239,11 +239,11 @@ public sealed class ModelCanvas : Control
         {
             ctx.FillRectangle(header, new Rect(f.X, f.Y, f.Width, ModelDiagram.HeaderHeight));
             // 머리: 아이콘 + 이름 (+ 둘째 줄)
-            var icon = Text("▦", 11, Brushes.White);
             double hy = f.Y + ModelDiagram.HeaderHeight / 2;
-            ctx.DrawText(icon, new Point(f.X + 10, hy - icon.Height / 2));
+            const double iconSize = 12;
+            TableCellsIcon.Draw(ctx, new Rect(f.X + 10, hy - iconSize / 2, iconSize, iconSize), Brushes.White);
             var n = ModelDiagram.Label(t.LogicalName, t.PhysicalName, NameMode);
-            double x = f.X + 10 + icon.Width + 6, maxRight = f.X + f.Width - 10;
+            double x = f.X + 10 + iconSize + 6, maxRight = f.X + f.Width - 10;
             var main = Text(n.Main.Length == 0 ? Tr("(이름 없음)") : n.Main, 13, Brushes.White, mono: NameMode == ModelNameMode.Physical,
                             bold: true, italic: n.Missing, maxWidth: Math.Max(10, maxRight - x));
             ctx.DrawText(main, new Point(x, hy - main.Height / 2));

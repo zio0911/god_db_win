@@ -155,7 +155,9 @@ public sealed class QuickOpenWindow : Window
     private Control Row(QuickOpen.Item item)
     {
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("18,Auto,*,Auto"), ColumnSpacing = 8 };
-        var icon = new TextBlock { Text = KindIcon(item.Kind), Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))), TextAlignment = TextAlignment.Center };
+        Control icon = item.Kind == QuickOpen.Kind.Table
+            ? new GodDB.App.Controls.TableCellsIcon { Width = 15, Height = 15, Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))) }
+            : new TextBlock { Text = KindIcon(item.Kind), Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))), TextAlignment = TextAlignment.Center };
         var name = new TextBlock { Text = item.Name, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock? detail = null;
         if (item.Kind == QuickOpen.Kind.Column) detail = new TextBlock { Text = item.Detail, Classes = { "secondary" } };

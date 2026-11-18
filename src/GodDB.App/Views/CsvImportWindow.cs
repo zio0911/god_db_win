@@ -89,7 +89,7 @@ public sealed class CsvImportWindow : Window
             MaxWidth = 480,
             Children =
             {
-                new TextBlock { Text = Glyphs.Table, FontSize = 36, HorizontalAlignment = HorizontalAlignment.Center, Classes = { "secondary" } },
+                new GodDB.App.Controls.TableCellsIcon { Width = 40, Height = 40, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Brushes.Gray },
                 new TextBlock { Text = Tr("가져올 CSV / TSV 파일을 고르세요"), Classes = { "headline" }, HorizontalAlignment = HorizontalAlignment.Center },
                 new TextBlock
                 {
