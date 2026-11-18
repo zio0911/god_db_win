@@ -1,0 +1,8 @@
+<!-- 메인 창 오른쪽 AI 어시스턴트 패널 (AI 어시스턴트 포팅에서 바꾼다). DataContext = AppState -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             x:Class="GodDB.App.Views.AssistantPanel"
+             x:DataType="vm:AppState">
+  <TextBlock Text="AI 어시스턴트 (작업 중)" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="secondary"/>
+</UserControl>

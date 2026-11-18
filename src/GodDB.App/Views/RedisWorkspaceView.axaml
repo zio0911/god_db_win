@@ -1,0 +1,8 @@
+<!-- Redis 화면: 키 · 콘솔 · Pub/Sub · 스트림 · 서버 정보 (Redis 화면 포팅에서 바꾼다). DataContext = RedisWorkspace -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             x:Class="GodDB.App.Views.RedisWorkspaceView"
+             x:DataType="vm:RedisWorkspace">
+  <TextBlock Text="Redis 화면 (작업 중)" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="secondary"/>
+</UserControl>

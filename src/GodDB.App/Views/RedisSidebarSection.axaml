@@ -1,0 +1,8 @@
+<!-- 사이드바 Redis 영역: DB 선택 · 키 트리 (Redis 화면 포팅에서 바꾼다). DataContext = RedisWorkspace (없으면 null) -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GodDB.App.ViewModels"
+             x:Class="GodDB.App.Views.RedisSidebarSection"
+             x:DataType="vm:RedisWorkspace">
+  <Panel/>
+</UserControl>

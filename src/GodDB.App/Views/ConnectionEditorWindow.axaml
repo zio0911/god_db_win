@@ -1,0 +1,181 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GodDB.App.ViewModels"
+        xmlns:c="using:GodDB.App.Controls"
+        xmlns:l="using:GodDB.App.Infrastructure"
+        x:Class="GodDB.App.Views.ConnectionEditorWindow"
+        x:DataType="vm:ConnectionEditorViewModel"
+        Width="560" Height="720" MinWidth="480" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Title="{l:T 접속 편집}">
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="HorizontalAlignment" Value="Right"/>
+      <Setter Property="Margin" Value="0,0,10,0"/>
+    </Style>
+    <Style Selector="Grid.row">
+      <Setter Property="Margin" Value="0,3"/>
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="2,12,0,6"/>
+    </Style>
+  </Window.Styles>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="16">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Button Content="{l:T 연결 테스트}" Command="{Binding TestCommand}" IsEnabled="{Binding !Testing}"/>
+        <ProgressBar Grid.Column="1" IsIndeterminate="True" Width="40" MinWidth="40" IsVisible="{Binding Testing}"/>
+        <Button Grid.Column="3" Content="{l:T 취소}" Command="{Binding CancelCommand}" IsCancel="True"/>
+        <Button Grid.Column="4" Content="{l:T 저장}" Command="{Binding SaveCommand}" IsDefault="True" Classes="accent"/>
+      </Grid>
+    </Border>
+    <SelectableTextBlock DockPanel.Dock="Bottom" Text="{Binding TestMessage}" Margin="20,0,20,8" TextWrapping="Wrap"
+                         IsVisible="{Binding TestMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                         Classes.ok="{Binding TestOk}" Classes.error="{Binding !TestOk}">
+      <SelectableTextBlock.Styles>
+        <Style Selector="SelectableTextBlock.ok"><Setter Property="Foreground" Value="{DynamicResource GreenBrush}"/></Style>
+      </SelectableTextBlock.Styles>
+    </SelectableTextBlock>
+    <ScrollViewer>
+      <StackPanel Margin="20,8,20,16">
+        <!-- 일반 -->
+        <TextBlock Classes="sectionTitle" Text="{l:T 일반}"/>
+        <Border Classes="section">
+          <StackPanel>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{l:T DB 종류}"/>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Converter={x:Static l:Conv.Title}}"/></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{l:T 이름}"/>
+              <TextBox Grid.Column="1" x:Name="NameBox" Text="{Binding Name}"/>
+            </Grid>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{l:T 그룹}"/>
+              <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                <TextBox Text="{Binding Group}" Watermark="{l:T 비우면 그룹 없음}"/>
+                <Button Grid.Column="1" x:Name="GroupPick" Classes="borderless" Content="📁" ToolTip.Tip="{l:T 기존 그룹에서 고르기}"/>
+              </Grid>
+            </Grid>
+            <CheckBox Content="{Binding ReadOnlyTitle}" IsChecked="{Binding ReadOnly}" Margin="150,4,0,0"/>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{l:T 환경}"/>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Environments}" SelectedItem="{Binding Environment}" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Converter={x:Static l:Conv.Title}}"/></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+            <TextBlock Classes="caption" Margin="150,2,0,0" IsVisible="{Binding ShowProductionNote}"
+                       Text="{l:T '운영 접속은 사이드바 · 탭에 빨간색으로 표시하고, 데이터를 바꾸는 문장을 실행하기 전에 항상 확인해요.'}"/>
+            <TextBlock Classes="caption" Margin="150,2,0,0" IsVisible="{Binding ShowMssqlReadOnlyNote}"
+                       Text="{l:T 'SQL Server 는 세션 단위 읽기전용 설정이 없어서 앱에서만 막아요. 운영 DB 는 읽기 전용 계정을 쓰는 걸 권장해요.'}"/>
+          </StackPanel>
+        </Border>
+
+        <!-- DB 종류별 -->
+        <TextBlock Classes="sectionTitle" Text="{Binding KindTitle}"/>
+        <Border Classes="section">
+          <StackPanel>
+            <StackPanel IsVisible="{Binding IsRedis}">
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T 방식}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding RedisModes}" SelectedItem="{Binding RedisMode}" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding Converter={x:Static l:Conv.Title}}"/></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+              <TextBlock Classes="caption" Margin="150,0,0,4" Text="{Binding RedisModeHelp}"/>
+            </StackPanel>
+            <Grid Classes="row" ColumnDefinitions="150,*" IsVisible="{Binding ShowAuthPicker}">
+              <TextBlock Classes="label" Text="{l:T 인증}"/>
+              <ComboBox Grid.Column="1" SelectedIndex="{Binding AuthIndex}" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="{l:T SQL 인증}"/>
+                <ComboBoxItem Content="{l:T Windows 인증}"/>
+              </ComboBox>
+            </Grid>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{Binding HostTitle}"/>
+              <TextBox Grid.Column="1" Text="{Binding Host}" Watermark="{Binding HostWatermark}"/>
+            </Grid>
+            <Grid Classes="row" ColumnDefinitions="150,*">
+              <TextBlock Classes="label" Text="{l:T 포트}"/>
+              <NumericUpDown Grid.Column="1" Value="{Binding Port}" Minimum="0" Maximum="65535" FormatString="0"
+                             ShowButtonSpinner="False" HorizontalAlignment="Stretch"/>
+            </Grid>
+            <Grid Classes="row" ColumnDefinitions="150,*" IsVisible="{Binding IsSentinel}">
+              <TextBlock Classes="label" Text="{l:T 마스터 이름}"/>
+              <TextBox Grid.Column="1" Text="{Binding SentinelMaster}" Watermark="mymaster"/>
+            </Grid>
+            <StackPanel IsVisible="{Binding ShowCredentials}">
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{Binding UserTitle}"/>
+                <TextBox Grid.Column="1" Text="{Binding Username}" Watermark="{Binding UserWatermark}"/>
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T 비밀번호}"/>
+                <c:PasswordField Grid.Column="1" x:Name="PasswordBox" Text="{Binding Password}"
+                                 NeedsAuthentication="{Binding ShowsSavedPassword}" AuthenticationReason="{Binding PasswordReason}"/>
+              </Grid>
+              <CheckBox Content="{l:T '비밀번호 저장 (Windows 자격 증명 관리자)'}" IsChecked="{Binding SavePassword}" Margin="150,4,0,0"/>
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="150,2,0,0" IsVisible="{Binding SavePassword}">
+                <TextBlock Text="{Binding HasSavedPassword, Converter={x:Static l:Conv.Seal}}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Classes="caption" Text="{Binding SavedPasswordText}" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" Content="{l:T 저장된 비밀번호 지우기}" Command="{Binding ClearSavedPasswordCommand}"
+                        IsVisible="{Binding HasSavedPassword}" FontSize="11" Padding="6,2"/>
+              </Grid>
+              <TextBlock Classes="caption" Margin="150,2,0,0" IsVisible="{Binding !SavePassword}"
+                         Text="{l:T '연결할 때마다 비밀번호를 물어봐요. (앱 실행 중에는 기억)'}"/>
+            </StackPanel>
+            <Grid Classes="row" ColumnDefinitions="150,*" IsVisible="{Binding ShowDatabase}">
+              <TextBlock Classes="label" Text="{Binding DatabaseTitle}"/>
+              <TextBox Grid.Column="1" Text="{Binding Database}" Watermark="{Binding DatabaseWatermark}"/>
+            </Grid>
+            <TextBlock Classes="caption" Margin="150,0,0,4" Text="{Binding DatabaseHelp}"
+                       IsVisible="{Binding DatabaseHelp, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <CheckBox Content="{l:T TLS 사용}" IsChecked="{Binding UseTls}" Margin="150,4,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <!-- SSH -->
+        <TextBlock Classes="sectionTitle" Text="{l:T SSH 터널}"/>
+        <Border Classes="section">
+          <StackPanel>
+            <CheckBox Content="{l:T SSH 바스티온 경유}" IsChecked="{Binding UseSsh}"/>
+            <StackPanel IsVisible="{Binding UseSsh}">
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T 바스티온 호스트}"/>
+                <TextBox Grid.Column="1" Text="{Binding SshHost}"/>
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T SSH 포트}"/>
+                <NumericUpDown Grid.Column="1" Value="{Binding SshPort}" Minimum="0" Maximum="65535" FormatString="0"
+                               ShowButtonSpinner="False" HorizontalAlignment="Stretch"/>
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T SSH 사용자}"/>
+                <TextBox Grid.Column="1" Text="{Binding SshUser}"/>
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="150,*">
+                <TextBlock Classes="label" Text="{l:T 키 파일}"/>
+                <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                  <TextBox Text="{Binding SshKeyPath}" Watermark="{Binding KeyWatermark}"/>
+                  <Button Grid.Column="1" Content="{l:T 선택…}" x:Name="PickKeyButton"/>
+                </Grid>
+              </Grid>
+              <TextBlock Classes="caption" Margin="0,6,0,0"
+                         Text="{l:T 'Windows 의 OpenSSH(ssh.exe) 로 터널을 열어요. 키 파일 인증만 지원해요.'}"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

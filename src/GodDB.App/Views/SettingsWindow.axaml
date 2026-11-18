@@ -1,0 +1,203 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GodDB.App.ViewModels"
+        xmlns:l="using:GodDB.App.Infrastructure"
+        xmlns:sys="using:System"
+        x:Class="GodDB.App.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Width="680" Height="560" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Title="{l:T 설정}">
+  <Window.Styles>
+    <Style Selector="TextBlock.groupTitle">
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="2,14,0,6"/>
+    </Style>
+    <Style Selector="Grid.row">
+      <Setter Property="Margin" Value="0,3"/>
+    </Style>
+    <Style Selector="Grid.row > TextBlock:nth-child(1)">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </Window.Styles>
+  <TabControl x:Name="Tabs" Padding="0">
+    <!-- 일반 -->
+    <TabItem Header="{l:T 일반}">
+      <ScrollViewer>
+        <StackPanel Margin="20,4,20,20">
+          <TextBlock Classes="groupTitle" Text="{l:T 언어}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <StackPanel x:Name="LanguagePanel" Spacing="4"/>
+              <TextBlock Classes="caption" Text="{l:T '바꾸면 바로 적용돼요.'}"/>
+              <TextBlock Classes="caption" Text="{Binding SystemLanguageNote}" IsVisible="{Binding ShowSystemLanguageNote}"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="groupTitle" Text="{l:T 쿼리}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 실행 시간 제한}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding TimeoutLabels}" SelectedIndex="{Binding QueryTimeoutIndex}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" Text="{l:T '시간을 넘기면 쿼리를 자동으로 취소해요. 실행 중에는 언제든 [취소] 또는 Ctrl+. 로 멈출 수 있어요.'}"/>
+              <CheckBox Content="{l:T 'INSERT 컬럼 힌트 보기'}" IsChecked="{Binding InsertHints}"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="groupTitle" Text="{l:T 로그}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <CheckBox Content="{l:T 로그 파일 남기기}" IsChecked="{Binding LogFileEnabled}"/>
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 보관 기간}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding RetentionLabels}" SelectedIndex="{Binding RetentionIndex}"
+                          IsEnabled="{Binding LogFileEnabled}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" Text="{Binding RetentionNote}"/>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <SelectableTextBlock Text="{Binding LogDirectory}" Classes="caption mono" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="{l:T 로그 폴더}" Command="{Binding OpenLogFolderCommand}"/>
+              </Grid>
+              <StackPanel Spacing="6" IsVisible="{Binding AuditToolUnlocked}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                  <TextBlock Text="{l:T 로그 파일 검사}" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Content="{l:T 폴더 선택…}" Command="{Binding ChooseAuditFolderCommand}"/>
+                  <Button Grid.Column="2" Content="{l:T 검사}" Command="{Binding CheckAuditCommand}"/>
+                </Grid>
+                <SelectableTextBlock Text="{Binding AuditFolderText}" Classes="caption mono"/>
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding AuditChecking}" Width="80" HorizontalAlignment="Left"/>
+                <ItemsControl ItemsSource="{Binding AuditReports}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="sys:String">
+                      <SelectableTextBlock Text="{Binding}" Classes="caption mono"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="{l:T 결과 복사}" Command="{Binding CopyAuditCommand}" IsVisible="{Binding HasAuditReports}"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="groupTitle" Text="{l:T 정보}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Button x:Name="VersionButton" Command="{Binding VersionTappedCommand}" Background="Transparent" BorderThickness="0"
+                      Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{l:T 버전}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding VersionText}" Classes="secondary"/>
+                </Grid>
+              </Button>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{l:T 소스 코드}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Classes="link" Content="{Binding SourceText}" Command="{Binding OpenSourceCommand}"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <!-- AI -->
+    <TabItem Header="{l:T AI}">
+      <ScrollViewer>
+        <StackPanel Margin="20,4,20,20">
+          <TextBlock Classes="groupTitle" Text="{l:T AI 어시스턴트}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <CheckBox Content="{l:T AI 어시스턴트 사용}" IsChecked="{Binding AssistantEnabled}"/>
+              <TextBlock Classes="caption" Text="{l:T '끄면 도구 막대의 ✨ AI 어시스턴트 버튼과 오른쪽 패널이 사라져요.'}"/>
+              <CheckBox Content="{l:T 쿼리 튜닝 사용}" IsChecked="{Binding TuningEnabled}"/>
+              <TextBlock Classes="caption" Text="{l:T '쿼리 탭의 튜닝 버튼(Ctrl+Alt+T)을 누르면 쿼리·테이블 구조·인덱스·실행 계획을 로컬 Ollama 에 보내 개선 SQL 과 추천 인덱스를 받아요. 끄면 튜닝 버튼이 사라져요.'}"/>
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="groupTitle" Text="Ollama"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T Ollama 주소}"/>
+                <TextBox Grid.Column="1" Text="{Binding OllamaUrl}" x:Name="UrlBox"/>
+              </Grid>
+              <TextBlock Classes="caption" Text="{Binding NonLocalWarning}" IsVisible="{Binding IsNonLocal}" Foreground="{DynamicResource OrangeBrush}"/>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="1" IsIndeterminate="True" Width="40" MinWidth="40" IsVisible="{Binding Checking}"/>
+                <Button Grid.Column="2" Content="{l:T 다시 확인}" Command="{Binding RefreshCommand}"/>
+              </Grid>
+              <Button Content="{l:T Ollama 실행}" Command="{Binding StartOllamaCommand}" IsVisible="{Binding CanStartOllama}"/>
+              <TextBlock Classes="error" FontSize="11" Text="{Binding StartError}" IsVisible="{Binding StartError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+              <Button Classes="link" Content="{l:T 'Ollama 내려받기 (ollama.com)'}" Command="{Binding OpenOllamaDownloadCommand}" IsVisible="{Binding ShowDownload}"/>
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="groupTitle" Text="{l:T 모델}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 모델}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding ModelChoices}" SelectedItem="{Binding SelectedModel}" HorizontalAlignment="Stretch"/>
+              </Grid>
+              <TextBlock Classes="caption" Text="{Binding RecommendNote}"/>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <SelectableTextBlock Text="{Binding PullCommandText}" Classes="caption mono" VerticalAlignment="Center"/>
+                <Button Content="{l:T 복사}" Command="{Binding CopyPullCommand}" FontSize="11" Padding="6,2"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="groupTitle" Text="{l:T 보내는 정보}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <TextBlock TextWrapping="Wrap"><Run Text="⬆ "/><Run Text="{l:T '보내는 것: 쿼리, 쿼리에 나온 테이블의 구조(DDL·인덱스), 예상 행 수, 실행 계획'}"/></TextBlock>
+              <TextBlock TextWrapping="Wrap"><Run Text="🔒 "/><Run Text="{l:T '보내지 않는 것: 실제 데이터 행, 비밀번호, 접속 정보'}"/></TextBlock>
+              <TextBlock TextWrapping="Wrap"><Run Text="✋ "/><Run Text="{l:T '개선 SQL 과 인덱스는 자동으로 실행하지 않아요. 확인 후 직접 실행하세요.'}"/></TextBlock>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <!-- 업데이트 -->
+    <TabItem Header="{l:T 업데이트}">
+      <StackPanel Margin="20,4,20,20">
+        <TextBlock Classes="groupTitle" Text="{l:T 업데이트 방식}"/>
+        <Border Classes="section">
+          <StackPanel Spacing="6">
+            <StackPanel x:Name="UpdatePanel" Spacing="4"/>
+            <TextBlock Classes="caption" Text="{l:T '새 버전은 GitHub 릴리스에서 받아요. 사용자 폴더에 설치돼 관리자 권한이 필요 없어요.'}"/>
+          </StackPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+          <Button Content="{l:T 지금 업데이트 확인…}" Command="{Binding CheckUpdatesCommand}"/>
+          <Button Content="{l:T 새로운 기능 보기}" Command="{Binding ShowReleaseNotesCommand}"/>
+        </StackPanel>
+      </StackPanel>
+    </TabItem>
+
+    <!-- 라이선스 -->
+    <TabItem Header="{l:T 라이선스}">
+      <Grid ColumnDefinitions="210,Auto,*">
+        <ListBox ItemsSource="{Binding LicenseItems}" SelectedItem="{Binding SelectedLicense}" x:Name="LicenseList">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="sys:String">
+              <TextBlock Text="{Binding}"/>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <Border Grid.Column="1" Width="1" Classes="divider"/>
+        <ScrollViewer Grid.Column="2">
+          <StackPanel Margin="14" Spacing="10">
+            <TextBlock Classes="title" Text="{Binding LicenseTitle}"/>
+            <TextBlock Classes="secondary" Text="{Binding LicenseSubtitle}"/>
+            <TextBlock TextWrapping="Wrap" Text="{Binding LicenseCopyright}"/>
+            <TextBlock Classes="caption" Text="{Binding LicenseNote}" IsVisible="{Binding HasLicenseNote}"/>
+            <Button Classes="link" Content="{Binding LicenseUrl}" Command="{Binding OpenLicenseUrlCommand}"/>
+            <Border Background="{DynamicResource CodeBackground}" CornerRadius="6" Padding="10">
+              <SelectableTextBlock Text="{Binding LicenseText}" Classes="mono" FontSize="11" TextWrapping="Wrap"/>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </TabItem>
+  </TabControl>
+</Window>
