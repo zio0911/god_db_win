@@ -3,11 +3,13 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
@@ -163,6 +165,7 @@ public sealed class ResultGrid : UserControl
             Setters = { new Setter(DataGridCell.PaddingProperty, new Thickness(6, 0)), new Setter(DataGridCell.MinHeightProperty, 20d) },
         });
         Grid.Sorting += OnSorting;
+        Grid.TemplateApplied += (_, e) => AttachHeaders(e.NameScope.Find<DataGridColumnHeadersPresenter>("PART_ColumnHeadersPresenter"));
         Grid.LoadingRow += OnLoadingRow;
         Grid.SelectionChanged += (_, _) => OnGridSelectionChanged();
         Grid.AddHandler(KeyDownEvent, OnGridKeyDown, RoutingStrategies.Tunnel);
@@ -182,7 +185,7 @@ public sealed class ResultGrid : UserControl
         Edits = edits;
         _filter = filter;
         if (newResult) BuildColumns(result);
-        else UpdateHeaders();
+        UpdateHeaders();
         Sync(QueryUi.Filter(edits.DisplayRows(result), filter), reset: newResult);
     }
 
@@ -272,7 +275,7 @@ public sealed class ResultGrid : UserControl
             var index = c.Id;
             Grid.Columns.Add(new DataGridTemplateColumn
             {
-                Header = HeaderText(result, c.Name),
+                Header = new HeaderLabel(c.Name),
                 Tag = c,
                 CellTemplate = new FuncDataTemplate<GridRow>((_, _) => new ResultCell(this, index), supportsRecycling: true),
                 CanUserSort = true,
@@ -283,15 +286,69 @@ public sealed class ResultGrid : UserControl
         }
     }
 
-    private static string HeaderText(QueryResult r, string name) =>
-        r.ActiveSort is { } s && s.Column == name ? $"{name} {(s.Ascending ? "↑" : "↓")}" : name;
-
-    private void UpdateHeaders()
+    /// 컬럼 머리글 글자. 같은 이름 컬럼이 있어도 머리글 칸 → 컬럼을 찾을 수 있게 컬럼마다 다른 객체로 둔다.
+    private sealed class HeaderLabel(string name)
     {
-        if (Result is not { } r) return;
-        foreach (var col in Grid.Columns)
-            if (col.Tag is QueryResult.Column c) col.Header = HeaderText(r, c.Name);
+        public override string ToString() => name;
     }
+
+    /// 컬럼의 정렬 방향 (결과의 실제 정렬 ActiveSort 기준, 같은 이름이면 첫 컬럼 — Mac syncSortOrder).
+    /// 머리글에는 이름만 쓰고, 방향은 표의 기본 정렬 화살표(머리글 :sortascending / :sortdescending)로 보인다 (Mac Table 의 기본 화살표).
+    public ListSortDirection? SortDirection(DataGridColumn column)
+    {
+        if (Result is not { ActiveSort: { } s } r || column.Tag is not QueryResult.Column c) return null;
+        var first = r.Columns.FirstOrDefault(x => x.Name == s.Column);
+        if (first == null || first.Id != c.Id) return null;
+        return s.Ascending ? ListSortDirection.Ascending : ListSortDirection.Descending;
+    }
+
+    private DataGridColumnHeadersPresenter? _headers;
+
+    private void AttachHeaders(DataGridColumnHeadersPresenter? presenter)
+    {
+        if (ReferenceEquals(presenter, _headers)) return;
+        if (_headers != null) _headers.Children.CollectionChanged -= OnHeadersChanged;
+        _headers = presenter;
+        if (presenter == null) return;
+        presenter.Children.CollectionChanged += OnHeadersChanged;
+        foreach (var h in presenter.Children.OfType<DataGridColumnHeader>()) HookHeader(h);
+        UpdateSortGlyphs();
+    }
+
+    private void OnHeadersChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null) foreach (var h in e.NewItems.OfType<DataGridColumnHeader>()) HookHeader(h);
+        UpdateSortGlyphs();
+    }
+
+    private readonly HashSet<DataGridColumnHeader> _hooked = [];
+
+    private void HookHeader(DataGridColumnHeader h)
+    {
+        if (!_hooked.Add(h)) return;
+        // 표가 자기 정렬 상태(우리는 쓰지 않음)로 화살표를 지우는 때가 있어 다시 맞춘다
+        h.TemplateApplied += (_, _) => SetGlyph(h);
+        h.AddHandler(PointerReleasedEvent, (_, _) => Dispatcher.UIThread.Post(UpdateSortGlyphs), RoutingStrategies.Bubble, handledEventsToo: true);
+        h.PropertyChanged += (_, e) => { if (e.Property == ContentControl.ContentProperty) SetGlyph(h); };
+    }
+
+    private void SetGlyph(DataGridColumnHeader h)
+    {
+        var column = h.Content == null ? null : Grid.Columns.FirstOrDefault(c => ReferenceEquals(c.Header, h.Content));
+        var dir = column == null ? null : SortDirection(column);
+        var pc = (IPseudoClasses)h.Classes;
+        pc.Set(":sortascending", dir == ListSortDirection.Ascending);
+        pc.Set(":sortdescending", dir == ListSortDirection.Descending);
+    }
+
+    /// 머리글 정렬 화살표를 결과의 실제 정렬과 맞춘다
+    public void UpdateSortGlyphs()
+    {
+        if (_headers == null) return;
+        foreach (var h in _headers.Children.OfType<DataGridColumnHeader>()) SetGlyph(h);
+    }
+
+    private void UpdateHeaders() => UpdateSortGlyphs();
 
     // MARK: - 정렬 · 이어 붙이기
 
@@ -302,6 +359,7 @@ public sealed class ResultGrid : UserControl
         if (Result is not { } r || e.Column.Tag is not QueryResult.Column c) return;
         var ascending = !(r.ActiveSort is { } s && s.Column == c.Name && s.Ascending);
         OnSort?.Invoke(c.Name, ascending);
+        Dispatcher.UIThread.Post(UpdateSortGlyphs);
     }
 
     private void OnLoadingRow(object? sender, DataGridRowEventArgs e)
@@ -325,6 +383,8 @@ public sealed class ResultGrid : UserControl
         }
         if (ids.SequenceEqual(SelectedIds)) return;
         SelectedIds = ids;
+        // 행을 고르면 표로 키보드 포커스를 옮긴다 (Ctrl+C 가 편집기가 아니라 표에 가도록 — Mac gridFocused)
+        if (ids.Count > 0 && !Grid.IsKeyboardFocusWithin) Grid.Focus();
         SelectedIdsChanged?.Invoke();
     }
 

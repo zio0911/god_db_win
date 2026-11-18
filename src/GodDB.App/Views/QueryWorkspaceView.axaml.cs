@@ -143,7 +143,7 @@ public partial class QueryWorkspaceView : UserControl
         var id = tab.Id;
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         if (tab.Running)
-            row.Children.Add(new TextBlock { Text = Glyphs.Refresh, Foreground = Q.Blue, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(ActivitySpinner.Mini());   // Mac ProgressView().controlSize(.mini)
         else
             row.Children.Add(new Ellipse
             {

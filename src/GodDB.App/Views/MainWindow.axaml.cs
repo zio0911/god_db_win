@@ -249,7 +249,7 @@ public partial class MainWindow : Window
                 if (p?.ReadOnly == true) Badge.Children.Add(Pill(Tr("읽기전용"), "#FF3B30", 0.12));
                 break;
             case ConnectionStateKind.Connecting:
-                Badge.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 30, MinWidth = 30, Height = 4 });
+                Badge.Children.Add(new GodDB.App.Controls.ActivitySpinner(16));   // Mac ProgressView().controlSize(.small)
                 Badge.Children.Add(T(Tr("연결 중…")));
                 break;
             case ConnectionStateKind.Failed:

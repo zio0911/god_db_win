@@ -26,7 +26,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
-        _insertHints = Prefs.Get(InsertHintsKey, true);
         _tuningEnabled = TuningSettings.Enabled;
         _ollamaUrl = TuningSettings.Url;
         _tuningModel = TuningSettings.Model;
@@ -61,11 +60,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (value >= 0 && value < TimeoutValues.Length) Prefs.Set(AppState.QueryTimeoutKey, TimeoutValues[value]);
     }
-
-    /// 편집기 INSERT 컬럼 힌트 (Mac GodDB.editor.insertHints)
-    public const string InsertHintsKey = "GodDB.editor.insertHints";
-    [ObservableProperty] private bool _insertHints;
-    partial void OnInsertHintsChanged(bool value) => Prefs.Set(InsertHintsKey, value);
 
     [ObservableProperty] private bool _logFileEnabled;
     partial void OnLogFileEnabledChanged(bool value) => AppStartup.SetLogFileEnabled(value);

@@ -69,7 +69,7 @@ public sealed class ResultTabsBar : Border
         BorderBrush = null;
         Child = new ScrollViewer
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,   // Mac showsIndicators: false
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = _panel,
         };
@@ -111,6 +111,8 @@ public sealed class RunningView : StackPanel
 {
     private readonly TextBlock _text = Q.T("", "secondary");
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
+    /// Mac ProgressView() (기본 크기 동그란 스피너)
+    public ActivitySpinner Spinner { get; } = ActivitySpinner.Regular();
     private DateTime? _started;
 
     public RunningView(Action onCancel)
@@ -119,7 +121,8 @@ public sealed class RunningView : StackPanel
         HorizontalAlignment = HorizontalAlignment.Center;
         VerticalAlignment = VerticalAlignment.Center;
         _text.HorizontalAlignment = HorizontalAlignment.Center;
-        Children.Add(new ProgressBar { IsIndeterminate = true, Width = 120 });
+        Spinner.HorizontalAlignment = HorizontalAlignment.Center;
+        Children.Add(Spinner);
         Children.Add(_text);
         var cancel = Q.B(Tr("취소"), onCancel, Tr("실행 중인 쿼리 멈추기 (Ctrl+.)"));
         cancel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -134,9 +137,15 @@ public sealed class RunningView : StackPanel
         _started = started;
         Tick();
         _timer.Start();
+        Spinner.IsVisible = true;
     }
 
-    public void Stop() => _timer.Stop();
+    /// 숨길 때 스피너도 멈춘다 (부모가 숨어도 스피너 타이머는 따로 돈다)
+    public void Stop()
+    {
+        _timer.Stop();
+        Spinner.IsVisible = false;
+    }
 
     private void Tick()
     {
@@ -172,7 +181,7 @@ public sealed class QuickFilterBar : Border
         };
         _clear = Q.B("✕", () => Box.Text = "", Tr("필터 지우기"), "borderless");
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
-        var icon = Q.T("⌕", "secondary");
+        var icon = FilterIcon();
         icon.Margin = new Thickness(0, 0, 4, 0);
         g.Children.Add(icon);
         Grid.SetColumn(Box, 1);
@@ -189,6 +198,15 @@ public sealed class QuickFilterBar : Border
     {
         get => Box.Text ?? "";
         set { if (Box.Text != value) Box.Text = value; }
+    }
+
+    /// Mac SF Symbol line.3.horizontal.decrease (거르기 아이콘)
+    private static Control FilterIcon()
+    {
+        var s = new StackPanel { Spacing = 2.5, VerticalAlignment = VerticalAlignment.Center, Classes = { "secondary" } };
+        foreach (var w in new[] { 12.0, 8.0, 4.0 })
+            s.Children.Add(new Border { Width = w, Height = 1.5, CornerRadius = new CornerRadius(0.75), Background = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Center });
+        return s;
     }
 
     public void SetCounts(int shown, int total) => _count.Text = Tr("%@ / %@행", shown, total);
@@ -221,7 +239,7 @@ public sealed class PlanWarningsView : Border
         var warnings = PlanAnalyzer.Warnings(result);
         Background = warnings.Count == 0 ? null : new SolidColorBrush(Color.Parse("#FF9500"), 0.06);
         var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        var title = Q.H(8, Q.T(Tr("실행 계획"), "headline"),
+        var title = Q.H(8, Q.T("⋔", "headline"), Q.T(Tr("실행 계획"), "headline"),
             warnings.Count == 0
                 ? new TextBlock { Text = "✓ " + Tr("특별한 주의사항 없음"), Foreground = Q.Green, VerticalAlignment = VerticalAlignment.Center }
                 : new TextBlock { Text = "⚠ " + Tr("주의 %@건", warnings.Count), Foreground = Q.Orange, VerticalAlignment = VerticalAlignment.Center });
@@ -348,7 +366,7 @@ public sealed class ResultStatusBar : Border
 
     public ResultStatusBar()
     {
-        Padding = new Thickness(12, 4);
+        Padding = new Thickness(12, 6);
     }
 
     public void Update(QueryResult result, int selectedCount, bool loading, ExportProgress? export, bool appendCapped)
@@ -368,7 +386,8 @@ public sealed class ResultStatusBar : Border
             b.FontSize = 11;
             return b;
         }
-        Control Spinner() => new ProgressBar { IsIndeterminate = true, Width = 40, MinWidth = 40, VerticalAlignment = VerticalAlignment.Center };
+        // Mac ProgressView().controlSize(.small)
+        Control Spinner() => new ActivitySpinner(16) { HorizontalAlignment = HorizontalAlignment.Center };
 
         var left = Q.H(12);
         if (result.Columns.Count > 0)
@@ -385,14 +404,14 @@ public sealed class ResultStatusBar : Border
                 var lastPage = QueryUi.LastPage(result);
                 var pager = Q.H(2,
                     Nav(Glyphs.First, 0, result.Page > 0, Tr("첫 페이지")),
-                    Nav(Glyphs.Prev, result.Page - 1, result.Page > 0, Tr("이전 페이지")));
+                    Nav("‹", result.Page - 1, result.Page > 0, Tr("이전 페이지")));   // Mac chevron.left
                 var range = Txt(QueryUi.PageRange(result), primary: true);
                 range.Margin = new Thickness(4, 0);
                 range.Opacity = loading ? 0.3 : 1;
                 var rangeBox = new Panel { Children = { range } };
                 if (loading) rangeBox.Children.Add(Spinner());
                 pager.Children.Add(rangeBox);
-                pager.Children.Add(Nav(Glyphs.Next, result.Page + 1, result.HasMore, Tr("다음 페이지")));
+                pager.Children.Add(Nav("›", result.Page + 1, result.HasMore, Tr("다음 페이지")));   // Mac chevron.right
                 if (lastPage is { } lp) pager.Children.Add(Nav(Glyphs.Last, lp, result.Page < lp, Tr("마지막 페이지")));
                 left.Children.Add(pager);
                 left.Children.Add(Txt(QueryUi.PageInfo(result)));

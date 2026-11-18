@@ -317,11 +317,15 @@ public sealed partial class AppState
             LogError(e, LogSource.App, Tr("%@ 파일을 열지 못했어요", Path.GetFileName(path)));
             return;
         }
+        // 편집기 · Core 오프셋은 LF 기준이라 LF 로 바꿔 두고, 원래 줄바꿈은 저장할 때 되돌린다
+        var ending = GodDB.App.Controls.LineEndings.Detect(text);
+        text = GodDB.App.Controls.LineEndings.Normalize(text);
         if (AddTab(text, Path.GetFileName(path)) is not { } id) return;
         Update(id, t =>
         {
             t.FilePath = path;
             t.SavedText = text;
+            t.FileLineEnding = ending;
         });
         NoteRecent(path);
         Log(LogLevel.Info, LogSource.App, Tr("%@ 파일을 열었어요", Path.GetFileName(path)));
@@ -341,7 +345,7 @@ public sealed partial class AppState
         try
         {
             var text = tab.Text;
-            await File.WriteAllTextAsync(path, text, new UTF8Encoding(false));
+            await File.WriteAllTextAsync(path, GodDB.App.Controls.LineEndings.Apply(text, tab.FileLineEnding), new UTF8Encoding(false));
             Update(tab.Id, t =>
             {
                 t.FilePath = path;

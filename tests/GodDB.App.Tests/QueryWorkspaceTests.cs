@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AvaloniaEdit.Document;
 using GodDB.App.Controls;
 using GodDB.App.ViewModels;
@@ -125,9 +126,6 @@ public class SqlEditorTests
     [Fact]
     public Task InsertHints_AreVisualOnly() => UiThread.Run(() =>
     {
-        var prev = Prefs.Get(SqlEditor.InsertHintsKey, true);
-        Prefs.Set(SqlEditor.InsertHintsKey, true);
-        try
         {
             const string sql = "INSERT INTO tb_member (id, email) VALUES (1, 'a@example.com')";
             var (w, editor) = Host(sql);
@@ -144,15 +142,12 @@ public class SqlEditorTests
             // 컬럼 목록이 없으면 스키마의 컬럼 순서
             editor.SetSqlText("INSERT INTO tb_order VALUES (1, 2)");
             Assert.Equal(["order_id", "member_id"], editor.CurrentHints.Select(h => h.Column));
-            // 설정에서 끄면 없다
-            Prefs.Set(SqlEditor.InsertHintsKey, false);
-            editor.RefreshDecorations();
-            Assert.Empty(editor.CurrentHints);
+            // Mac 과 같이 끄는 설정이 없다 (예전 설정 값이 남아 있어도 항상 보인다)
+            Prefs.Set("GodDB.editor.insertHints", false);
+            editor.SetSqlText(sql);
+            Assert.Equal(["id", "email"], editor.CurrentHints.Select(h => h.Column));
+            Prefs.Remove("GodDB.editor.insertHints");
             w.Close();
-        }
-        finally
-        {
-            Prefs.Set(SqlEditor.InsertHintsKey, prev);
         }
     });
 
@@ -364,6 +359,108 @@ public class QueryWorkspaceViewTests
         w.Close();
     });
 
+    private sealed class SaveTo(string path) : GodDB.App.Services.NullDialogs
+    {
+        public override Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<GodDB.App.Services.FileFilter> filters) =>
+            Task.FromResult<string?>(path);
+    }
+
+    [Fact]
+    public Task CrlfFile_SavesBackWithCrlf_EditorKeepsLf() => UiThread.Run(async () =>
+    {
+        var (app, _, view, w) = Setup();
+        var path = Path.Combine(TestSetup.Root, $"crlf-{Guid.NewGuid():N}.sql");
+        await File.WriteAllTextAsync(path, "SELECT 1;\r\nSELECT 2;\r\n");
+        try
+        {
+            app.OpenSqlFile(path);
+            Pump();
+            var tab = app.SelectedTab!;
+            // 편집기 · 탭 글은 LF (Core 오프셋 기준), 파일 그대로라 '바뀜' 표시 없음
+            Assert.Equal("SELECT 1;\nSELECT 2;\n", tab.Text);
+            Assert.False(tab.IsDirty);
+            Assert.Equal(tab.Text, view.TabView!.Editor.SqlText);
+            // 고쳐서 저장하면 원래 줄바꿈(CRLF)으로 쓴다 (Mac 은 글 그대로 저장 → 원래 줄바꿈 유지)
+            view.TabView.Editor.Document.Insert(view.TabView.Editor.SqlText.Length, "SELECT 3;\n");
+            Assert.True(tab.IsDirty);
+            await app.SaveSelectedTabAsync();
+            Assert.Equal("SELECT 1;\r\nSELECT 2;\r\nSELECT 3;\r\n", await File.ReadAllTextAsync(path));
+            Assert.False(tab.IsDirty);
+            Assert.DoesNotContain('\r', tab.Text);
+            // 다른 이름으로 저장해도 그 탭의 줄바꿈을 따른다
+            var other = Path.Combine(TestSetup.Root, $"crlf-{Guid.NewGuid():N}.sql");
+            app.Dialogs = new SaveTo(other);
+            await app.SaveSelectedTabAsync(saveAs: true);
+            Assert.Equal("SELECT 1;\r\nSELECT 2;\r\nSELECT 3;\r\n", await File.ReadAllTextAsync(other));
+            File.Delete(other);
+
+            // 새 탭(파일 없음)은 LF 로 저장
+            app.AddTab("SELECT 4;\nSELECT 5;");
+            var lf = Path.Combine(TestSetup.Root, $"lf-{Guid.NewGuid():N}.sql");
+            app.Dialogs = new SaveTo(lf);
+            await app.SaveSelectedTabAsync();
+            Assert.Equal("SELECT 4;\nSELECT 5;", await File.ReadAllTextAsync(lf));
+            File.Delete(lf);
+
+            // LF 파일은 LF 그대로
+            var lfFile = Path.Combine(TestSetup.Root, $"lf-{Guid.NewGuid():N}.sql");
+            await File.WriteAllTextAsync(lfFile, "SELECT 6;\n");
+            app.OpenSqlFile(lfFile);
+            app.SelectedTab!.Text += "SELECT 7;\n";
+            await app.SaveSelectedTabAsync();
+            Assert.Equal("SELECT 6;\nSELECT 7;\n", await File.ReadAllTextAsync(lfFile));
+            File.Delete(lfFile);
+        }
+        finally
+        {
+            File.Delete(path);
+            w.Close();
+        }
+    });
+
+    [Fact]
+    public Task QueryToolbar_HasNoEnvironmentOrReadOnlyBadge_KeepsProductionBanner() => UiThread.Run(() =>
+    {
+        var (app, p, view, w) = Setup((app, p) =>
+        {
+            var i = app.Profiles.IndexOf(p);
+            app.Profiles[i] = p with { ReadOnly = true, Environment = ConnectionEnvironment.Production };
+        });
+        app.AddTab("select 1");
+        Pump();
+        var tv = view.TabView!;
+        // 접속 환경 · 읽기전용 표시는 창 위 막대(Mac ConnectionBadge)에만 — 쿼리 도구 막대에는 없다
+        Assert.Empty(tv.Toolbar.GetVisualDescendants().OfType<EnvironmentBadge>());
+        Assert.DoesNotContain(tv.Toolbar.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "읽기전용" || t.Text == "운영");
+        // 운영 접속 빨간 띠는 Mac QueryTabView 에도 있다
+        Assert.Contains(tv.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "운영 접속 · local");
+        w.Close();
+    });
+
+    [Fact]
+    public Task RunningTab_ShowsCircularSpinners() => UiThread.Run(() =>
+    {
+        var (app, _, view, w) = Setup();
+        var id = app.AddTab("select sleep(1)")!.Value;
+        Pump();
+        var tab = app.Tab(id)!;
+        tab.Running = true;
+        tab.RunStarted = DateTime.Now;
+        Pump();
+        // 탭 칩: 작은 스피너 (Mac ProgressView().controlSize(.mini))
+        var chipSpinner = Assert.Single(view.Chips[0].GetVisualDescendants().OfType<ActivitySpinner>());
+        Assert.Equal(10, chipSpinner.Width);
+        Assert.True(chipSpinner.IsSpinning);
+        // 결과 영역: 동그란 스피너, 막대 없음
+        Assert.True(view.TabView!.Results.Running.Spinner.IsSpinning);
+        Assert.Empty(view.TabView.GetVisualDescendants().OfType<ProgressBar>());
+        tab.Running = false;
+        Pump();
+        Assert.Empty(view.Chips[0].GetVisualDescendants().OfType<ActivitySpinner>());
+        Assert.False(view.TabView.Results.Running.Spinner.IsSpinning);
+        w.Close();
+    });
+
     [Fact]
     public Task ResultPane_ShowsResultsTabsErrorAndPaging() => UiThread.Run(() =>
     {
@@ -456,24 +553,40 @@ public class QueryWorkspaceViewTests
     });
 
     [Fact]
-    public Task HeaderSort_CallsAppState_AndShowsArrow() => UiThread.Run(() =>
+    public Task HeaderSort_CallsAppState_AndShowsNativeArrow() => UiThread.Run(() =>
     {
         var (app, _, view, w) = Setup();
         var id = app.AddTab("show tables")!.Value;
         Pump();
         var tab = app.Tab(id)!;
         var pane = view.TabView!.Results;
-        tab.Result = new QueryResult(["n"], [["b"], ["a"], [null]], 0) { Sql = "SHOW TABLES" };
+        tab.Result = new QueryResult(["n", "m"], [["b", "1"], ["a", "2"], [null, "3"]], 0) { Sql = "SHOW TABLES" };
         Pump();
+        var grid = pane.Grid;
+        Avalonia.Controls.DataGridColumnHeader Header(int i) =>
+            grid.Grid.GetVisualDescendants().OfType<Avalonia.Controls.DataGridColumnHeader>()
+                .First(h => ReferenceEquals(h.Content, grid.Grid.Columns[i].Header));
+        Assert.Null(grid.SortDirection(grid.Grid.Columns[0]));
+        Assert.DoesNotContain(":sortascending", Header(0).Classes);
         // 연결(세션)이 없으면 받아 온 행을 앱에서 정렬한다 (SHOW 처럼 감쌀 수 없는 결과)
-        pane.Grid.OnSort!("n", true);
+        grid.OnSort!("n", true);
         Pump();
-        Assert.Equal([null, "a", "b"], pane.Grid.Rows.Select(r => r.Values[0]));
-        Assert.Equal("n ↑", pane.Grid.Grid.Columns[0].Header);
-        pane.Grid.OnSort!("n", false);
+        Assert.Equal([null, "a", "b"], grid.Rows.Select(r => r.Values[0]));
+        // 머리글 글자는 이름 그대로, 방향은 표의 기본 정렬 화살표 (Mac Table 처럼)
+        Assert.Equal("n", grid.Grid.Columns[0].Header?.ToString());
+        Assert.Equal(System.ComponentModel.ListSortDirection.Ascending, grid.SortDirection(grid.Grid.Columns[0]));
+        Assert.Null(grid.SortDirection(grid.Grid.Columns[1]));
+        Assert.Contains(":sortascending", Header(0).Classes);
+        Assert.DoesNotContain(":sortdescending", Header(0).Classes);
+        Assert.DoesNotContain(":sortascending", Header(1).Classes);
+        grid.OnSort!("n", false);
         Pump();
-        Assert.Equal("b", pane.Grid.Rows[0].Values[0]);
-        Assert.Equal("n ↓", pane.Grid.Grid.Columns[0].Header);
+        Assert.Equal("b", grid.Rows[0].Values[0]);
+        Assert.Equal("n", grid.Grid.Columns[0].Header?.ToString());
+        Assert.Equal(System.ComponentModel.ListSortDirection.Descending, grid.SortDirection(grid.Grid.Columns[0]));
+        Assert.Contains(":sortdescending", Header(0).Classes);
+        Assert.DoesNotContain(":sortascending", Header(0).Classes);
+        Assert.DoesNotContain(grid.Grid.Columns, c => (c.Header?.ToString() ?? "").Contains('↑') || (c.Header?.ToString() ?? "").Contains('↓'));
         w.Close();
     });
 

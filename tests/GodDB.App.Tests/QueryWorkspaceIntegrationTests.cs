@@ -63,7 +63,8 @@ public class QueryWorkspaceIntegrationTests
             pane.Grid.OnSort!("id", false);
             await Until(() => !tab.PageLoading && tab.Result?.ServerSort != null);
             Assert.Equal("3", pane.Grid.Rows[0].Values[0]);
-            Assert.Equal("id ↓", pane.Grid.Grid.Columns[0].Header);
+            Assert.Equal("id", pane.Grid.Grid.Columns[0].Header?.ToString());
+            Assert.Equal(System.ComponentModel.ListSortDirection.Descending, pane.Grid.SortDirection(pane.Grid.Grid.Columns[0]));
 
             // 결과 편집 → 적용 (한 트랜잭션) → 다시 읽기
             var rowId = pane.Grid.Rows[0].Id;

@@ -93,7 +93,6 @@ public sealed class QueryTabView : UserControl
     private readonly Button _refreshSource;
     private readonly ComboBox _limit;
     private readonly Border _txDivider = Q.Divider(vertical: true);
-    private readonly StackPanel _badges = Q.H(6);
     private readonly Grid _split;
 
     private static readonly (int Value, string Label)[] Limits = [(100, "100"), (500, "500"), (1000, "1000"), (5000, "5000"), (0, "제한 없음")];
@@ -139,7 +138,7 @@ public sealed class QueryTabView : UserControl
         var pageLabel = Q.T(Tr("페이지"));
         pageLabel.Classes.Add("label");
 
-        var left = Q.H(10, _run, _cancel, _explain, _tune, _refreshSource, history, Q.H(4, pageLabel, _limit), _txDivider, Tx, _badges);
+        var left = Q.H(10, _run, _cancel, _explain, _tune, _refreshSource, history, Q.H(4, pageLabel, _limit), _txDivider, Tx);
         var hint = Q.T(Tr("Tab 자동완성 · Ctrl+Enter 실행 · Ctrl+Shift+Enter 실행 계획 · Ctrl+/ 주석 · Ctrl+Alt+L 정렬"), "caption");
         hint.Classes.Add("label");
         hint.TextWrapping = TextWrapping.NoWrap;
@@ -149,6 +148,7 @@ public sealed class QueryTabView : UserControl
         Grid.SetColumn(hint, 2);
         row.Children.Add(hint);
         var toolbar = new AdaptiveBar { Content = row };
+        Toolbar = toolbar;
 
         var top = new DockPanel();
         DockPanel.SetDock(_banner, Dock.Top);
@@ -213,10 +213,15 @@ public sealed class QueryTabView : UserControl
             Editor.ScrollToVerticalOffset(st.ScrollY);
             Editor.RefreshDecorations();
             tab.PropertyChanged += OnTabChanged;
+            // 탭을 열거나 바꾸면 편집기에 포커스 (Mac QueryTabView.onAppear controller.focus())
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (ReferenceEquals(_tab, tab)) Editor.TextArea.Focus(); });
         }
         Results.Bind(tab);
         RefreshToolbar();
     }
+
+    /// 도구 막대 (테스트용). 접속 환경 · 읽기전용 표시는 Mac 처럼 창 위 막대(ConnectionBadge)에만 있다.
+    public Control Toolbar { get; private set; } = null!;
 
     private void SaveEditorState()
     {
@@ -301,13 +306,6 @@ public sealed class QueryTabView : UserControl
         var showTx = tab != null && profile is { Kind: not DatabaseKind.Redis, ReadOnly: false } && _app.ConnectionState(tab.ProfileId).IsConnected;
         Tx.IsVisible = _txDivider.IsVisible = showTx;
         if (showTx) Tx.Update(tab!.ProfileId);
-        _badges.Children.Clear();
-        if (profile != null)
-        {
-            if (profile.Environment != ConnectionEnvironment.None) _badges.Children.Add(new EnvironmentBadge { Environment = profile.Environment });
-            if (profile.ReadOnly) _badges.Children.Add(Q.Pill(Tr("읽기전용"), Q.Red));
-        }
-        _badges.IsVisible = _badges.Children.Count > 0;
     }
 
     // MARK: - 실행

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
@@ -15,7 +16,7 @@ public sealed class EditApplySheet : Window
     private readonly AppState _app;
     private readonly EditApplyRequest _request;
     private readonly SelectableTextBlock _error = new() { Classes = { "error" }, IsVisible = false };
-    private readonly ProgressBar _working = new() { IsIndeterminate = true, Width = 60, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ActivitySpinner _working = new(16) { IsVisible = false };
     public Button ApplyButton { get; }
 
     public EditApplySheet(AppState app, object value)
@@ -106,7 +107,7 @@ public sealed class TableActionSheet : Window
     public SelectableTextBlock SqlPreview { get; } = new() { FontFamily = Q.Mono, TextWrapping = TextWrapping.Wrap };
     public Button RunButton { get; }
     private readonly SelectableTextBlock _error = new() { Classes = { "error" }, IsVisible = false };
-    private readonly ProgressBar _workingBar = new() { IsIndeterminate = true, Width = 60, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ActivitySpinner _workingBar = new(16) { IsVisible = false };
     private bool _working;
 
     public TableActionSheet(AppState app, object value)

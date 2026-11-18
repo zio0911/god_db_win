@@ -183,6 +183,8 @@ public sealed partial class QueryTab : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(IsDirty))] private string? _filePath;
     /// 파일에 마지막으로 저장한 내용 (바뀌었는지 표시)
     [ObservableProperty, NotifyPropertyChangedFor(nameof(IsDirty))] private string? _savedText;
+    /// 연 파일의 원래 줄바꿈. 편집기 안은 LF 로 두고, 저장할 때 이 줄바꿈으로 쓴다 (새 파일은 LF — Mac 은 글 그대로 저장)
+    public string FileLineEnding { get; set; } = "\n";
 
     public string Title => CustomTitle ?? Tr("쿼리 %@", Number);
     public bool IsDirty => FilePath != null && Text != SavedText;

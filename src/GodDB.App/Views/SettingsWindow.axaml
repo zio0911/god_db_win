@@ -42,7 +42,6 @@
                 <ComboBox Grid.Column="1" ItemsSource="{Binding TimeoutLabels}" SelectedIndex="{Binding QueryTimeoutIndex}" MinWidth="160"/>
               </Grid>
               <TextBlock Classes="caption" Text="{l:T '시간을 넘기면 쿼리를 자동으로 취소해요. 실행 중에는 언제든 [취소] 또는 Ctrl+. 로 멈출 수 있어요.'}"/>
-              <CheckBox Content="{l:T 'INSERT 컬럼 힌트 보기'}" IsChecked="{Binding InsertHints}"/>
             </StackPanel>
           </Border>
 

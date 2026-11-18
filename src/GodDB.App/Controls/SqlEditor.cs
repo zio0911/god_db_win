@@ -27,6 +27,15 @@ public static class LineEndings
     public static string Normalize(string text) =>
         text.Contains('\r') ? text.Replace("\r\n", "\n").Replace('\r', '\n') : text;
 
+    /// 파일 글의 줄바꿈 ("\r\n" / "\r" / "\n"). 섞여 있으면 CRLF 를 우선한다.
+    /// Mac 은 편집기 글을 그대로 저장해서 원래 줄바꿈이 유지된다. 여기서는 편집기 안을 LF 로 두므로 열 때 기억했다가 저장할 때 되돌린다.
+    public static string Detect(string text) =>
+        text.Contains("\r\n") ? "\r\n" : text.Contains('\r') ? "\r" : "\n";
+
+    /// LF 글을 주어진 줄바꿈으로 바꾼다 (파일에 쓸 때)
+    public static string Apply(string lfText, string ending) =>
+        ending == "\n" ? lfText : Normalize(lfText).Replace("\n", ending);
+
     /// 문서에 LF 유지 장치를 붙인다 (이미 붙어 있으면 그대로). 지금 글에 \r 이 있으면 바로 바꾼다.
     public static void Attach(TextDocument doc)
     {
@@ -76,9 +85,6 @@ public static class LineEndings
 /// 키 처리는 이 단축키들만 가로챈다 (한글 IME 입력은 AvaloniaEdit 기본 처리 그대로).
 public class SqlEditor : TextEditor
 {
-    /// 설정 > 일반 > 편집기 > INSERT 값 앞에 컬럼 이름 표시 (Mac HintTextView.showHintsKey)
-    public const string InsertHintsKey = "GodDB.editor.insertHints";
-
     protected override Type StyleKeyOverride => typeof(TextEditor);
 
     private readonly SqlColorizer _colorizer = new();
@@ -173,7 +179,8 @@ public class SqlEditor : TextEditor
     public void RefreshDecorations()
     {
         _colorizer.Update(_text, _kind);
-        var show = Prefs.Get(InsertHintsKey, true) && _text.Length < SqlHighlighter.MaxLength;
+        // Mac HintTextView.enabled: INSERT 컬럼 이름 표시는 항상 켬 (설정에서 끄는 옵션 없음)
+        var show = _text.Length < SqlHighlighter.MaxLength;
         var hints = show ? InsertHints.Displayable(_text, SchemaProvider().Tables) : [];
         hints.Sort((a, b) => a.Location.CompareTo(b.Location));
         _hints.Hints = hints;
