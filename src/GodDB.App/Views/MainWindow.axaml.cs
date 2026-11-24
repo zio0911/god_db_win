@@ -104,6 +104,8 @@ public partial class MainWindow : Window
     {
         App.Updates = updates;
         App.Fire(App.RunStartupAsync);
+        // 지난번 이전 버전 설치가 실패했으면 알린다 (Mac reportHelperFailureIfAny)
+        App.Fire(() => PreviousVersionInstaller.ReportPendingResultAsync(App));
     }
 
     // MARK: - AppState 변화
@@ -480,7 +482,8 @@ public partial class MainWindow : Window
             Item("새로운 기능", app.OpenReleaseNotes),
             Item("문제 보고…", () => app.ShowProblemReport = true),
             new Separator(),
-            Item("업데이트 확인…", () => app.Fire(() => app.CheckForUpdatesAsync(userInitiated: true))));
+            Item("업데이트 확인…", () => app.Fire(() => app.CheckForUpdatesAsync(userInitiated: true))),
+            Item("이전 버전 설치…", () => app.ShowPreviousVersions = true));
 
         MainMenu.ItemsSource = new[] { file, edit, db, view, help };
         RefreshEnabled();

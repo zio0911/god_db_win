@@ -59,6 +59,8 @@ public sealed partial class AppState : ObservableObject
     [ObservableProperty] private string? _releaseNotesSince;
     /// 문제 보고 창
     [ObservableProperty] private bool _showProblemReport;
+    /// 이전 버전 설치 창 (Mac 1.4.0)
+    [ObservableProperty] private bool _showPreviousVersions;
     /// 설정 창 (Windows: Ctrl+,)
     [ObservableProperty] private bool _showSettings;
     /// 커밋하지 않은 트랜잭션 확인 (자동 커밋 켜기 / 연결 끊기)

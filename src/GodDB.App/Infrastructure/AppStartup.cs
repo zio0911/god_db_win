@@ -30,6 +30,9 @@ public static class AppStartup
         GodDB.Core.Audit.AuditChain.KeyStore = new GodDB.Platform.Windows.DpapiDeviceKeyStore();
         GodDB.Core.Audit.AuditChain.PlatformSigner = GodDB.Platform.Windows.TpmDeviceSigner.TryCreate;
         GodDB.Core.Audit.AuditChain.SystemLog = GodDB.Platform.Windows.SystemLog.Write;
+        // 로컬 데이터(히스토리 · 탭 · AI 대화 · Redis Workbench) 암호화 키: DPAPI(현재 사용자)로 잠가 이 PC 에만 (Mac: 키체인)
+        GodDB.Core.Platform.LocalDataCrypto.UsePlatformKeyStore(
+            new GodDB.Platform.Windows.DpapiDeviceKeyStore(entropy: GodDB.Platform.Windows.DpapiDeviceKeyStore.LocalDataEntropy));
 #endif
     }
 

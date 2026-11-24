@@ -64,7 +64,11 @@ public abstract record ImportAction
 
 public static class ConnectionTransfer
 {
-    internal const int Rounds = 200_000;
+    /// PBKDF2-SHA256 반복 횟수 (OWASP 권장 60만 회). 1.4.2 까지는 20만 회 — 가져오기는 파일에 적힌 횟수를 쓴다
+    internal const int Rounds = 600_000;
+    /// 가져올 때 받아 주는 횟수 범위 (터무니없이 큰 값으로 앱을 오래 붙잡는 파일 거절)
+    internal const int MinAcceptedRounds = 10_000;
+    internal const int MaxAcceptedRounds = 5_000_000;
 
     /// 파일 JSON 설정 (camelCase, enum 은 소문자 문자열, 날짜는 초 단위 ISO 8601 — Swift JSONEncoder 와 같음)
     internal static readonly JsonSerializerOptions Json = new()
@@ -237,19 +241,19 @@ public static class ConnectionTransfer
     private const int NonceSize = 12;
     private const int TagSize = 16;
 
-    internal static ConnectionBundle.EncryptedPasswords Encrypt(byte[] plain, string passphrase)
+    internal static ConnectionBundle.EncryptedPasswords Encrypt(byte[] plain, string passphrase, int rounds = Rounds)
     {
         var salt = RandomNumberGenerator.GetBytes(16);
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
         var cipher = new byte[plain.Length];
         var tag = new byte[TagSize];
-        using (var aes = new AesGcm(Key(passphrase, salt, Rounds), TagSize))
+        using (var aes = new AesGcm(Key(passphrase, salt, rounds), TagSize))
             aes.Encrypt(nonce, plain, cipher, tag);
         // CryptoKit AES.GCM.SealedBox.combined = nonce ‖ ciphertext ‖ tag
         byte[] combined = [.. nonce, .. cipher, .. tag];
         return new ConnectionBundle.EncryptedPasswords
         {
-            Rounds = Rounds,
+            Rounds = rounds,
             Salt = Convert.ToBase64String(salt),
             Data = Convert.ToBase64String(combined),
         };
@@ -257,6 +261,8 @@ public static class ConnectionTransfer
 
     internal static byte[] Decrypt(ConnectionBundle.EncryptedPasswords enc, string passphrase)
     {
+        if (enc.Rounds is < MinAcceptedRounds or > MaxAcceptedRounds)
+            throw new ConnectionTransferException(ConnectionTransferErrorKind.NotGodDBFile);
         byte[] salt, data;
         try
         {

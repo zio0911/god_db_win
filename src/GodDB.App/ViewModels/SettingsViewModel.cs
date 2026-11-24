@@ -46,6 +46,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(SystemLanguageNote));
         OnPropertyChanged(nameof(ShowSystemLanguageNote));
         OnPropertyChanged(nameof(RetentionNote));
+        OnPropertyChanged(nameof(HistoryKeepNote));
     }
 
     /// 언어가 바뀌면 VM 이 만든 문장도 다시 읽게 한다
@@ -71,6 +72,25 @@ public sealed partial class SettingsViewModel : ObservableObject
                  value ? Tr("위험한 명령 실행 전 확인을 켰어요") : Tr("위험한 명령 실행 전 확인을 껐어요"),
                  audit: new AuditRecord(AuditAction.Settings, "GodDB", value ? "위험한 명령 확인 켬" : "위험한 명령 확인 끔"));
     }
+
+    // MARK: 히스토리 보관 기간 (Mac 1.4.1: 7 · 30 · 90일 · 영구, 기본 30일)
+
+    public IReadOnlyList<string> HistoryKeepDaysLabels => [Tr("7일"), Tr("30일"), Tr("90일"), Tr("영구 보관")];
+    [ObservableProperty] private int _historyKeepDaysIndex = Math.Max(0, QueryHistory.KeepDaysChoices.ToList().IndexOf(QueryHistory.KeepDays));
+    partial void OnHistoryKeepDaysIndexChanged(int value)
+    {
+        if (value < 0 || value >= QueryHistory.KeepDaysChoices.Count) return;
+        QueryHistory.KeepDays = QueryHistory.KeepDaysChoices[value];
+        OnPropertyChanged(nameof(HistoryKeepNote));
+        // 바꾸면 바로 정리한다 (화면을 막지 않게 뒤에서)
+        var history = App?.History ?? QueryHistory.Shared;
+        _ = Task.Run(history.ApplyRetentionNow);
+    }
+
+    /// Mac 문장의 "이 Mac 의 키체인 키" → Windows: DPAPI(현재 Windows 계정)로 잠근 이 PC 의 키
+    public string HistoryKeepNote => QueryHistory.KeepDays == 0
+        ? Tr("실행한 쿼리 기록을 지우지 않고 남겨요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.")
+        : Tr("%@일이 지난 쿼리 기록은 자동으로 지워요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.", QueryHistory.KeepDays);
 
     [ObservableProperty] private bool _logFileEnabled;
     partial void OnLogFileEnabledChanged(bool value) => AppStartup.SetLogFileEnabled(value);

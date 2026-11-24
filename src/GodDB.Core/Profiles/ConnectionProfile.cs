@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GodDB.Core.Platform;
 using static GodDB.Core.L10n;
 
 namespace GodDB.Core;
@@ -127,7 +128,10 @@ public sealed class ProfileStore(string? filePath = null)
         try
         {
             if (!File.Exists(FilePath)) return [];
-            return JsonSerializer.Deserialize<List<ConnectionProfile>>(File.ReadAllText(FilePath), Json) ?? [];
+            var text = File.ReadAllText(FilePath);
+            // 예전 버전이 만든 파일(상속 권한)도 나만 읽게 맞춘다 (Mac: 0644 → 0600)
+            if (!UserOnlyFile.IsRestrictedSafe(FilePath)) UserOnlyFile.Restrict(FilePath);
+            return JsonSerializer.Deserialize<List<ConnectionProfile>>(text, Json) ?? [];
         }
         catch { return []; }
     }
@@ -137,6 +141,8 @@ public sealed class ProfileStore(string? filePath = null)
         AppPaths.Ensure(Path.GetDirectoryName(FilePath)!);
         var tmp = FilePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(profiles.ToList(), Json));
+        // 접속 목록(호스트 · 계정 · SSH 키 경로)은 나만 읽고 쓰게 (Mac: 0600). 비밀번호는 자격 증명 관리자에 따로 있다
+        UserOnlyFile.Restrict(tmp);
         File.Move(tmp, FilePath, overwrite: true);
     }
 }
