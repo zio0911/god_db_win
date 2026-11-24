@@ -146,6 +146,10 @@ public static class ErrorText
         foreach (var f in Describers)
             if (f(error, raw) is { } custom) return custom;
 
+        // F9-3 · F9-4: 인증서 · SSH 호스트 키 (화면이 확인 창을 띄운다). 문구에 TLS 가 들어 있어 아래 TLS 추측보다 먼저 본다
+        if (error is Drivers.TlsCertificateException or Platform.SshHostKeyException) return new(error.Message, null, raw);
+        if (error is Drivers.GodDbException) return new(error.Message, null, raw);
+
         switch (error)
         {
             case Drivers.DbConnectTimeoutException t:

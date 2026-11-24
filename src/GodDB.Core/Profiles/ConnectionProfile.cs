@@ -111,6 +111,9 @@ public sealed record ConnectionProfile
     public bool Redshift { get; set; }
     /// 마지막으로 연결에 성공한 시각 (사이드바 "최근 연결순" 정렬)
     public DateTimeOffset? LastConnectedAt { get; set; }
+    /// 사용자가 신뢰한 서버 인증서(맨 앞, DER)의 SHA-256 "3F:A2:…" (없으면 null)
+    [JsonPropertyName("tlsPinSHA256")]
+    public string? TlsPinSHA256 { get; set; }
 
     /// 비밀번호가 필요한 접속인지 (Windows 인증이면 필요 없음)
     [JsonIgnore]

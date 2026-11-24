@@ -25,6 +25,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _language = L10n.Language;
         _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
         _confirmDangerous = RunConfirm.ConfirmDangerous;
+        _prodIdleIndex = Math.Max(0, Array.IndexOf(AppState.ProdIdleChoices, Prefs.Get(AppState.ProdIdleMinutesKey, 30)));
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
         _ollamaUrl = TuningSettings.Url;
@@ -96,6 +97,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string HistoryKeepNote => QueryHistory.KeepDays == 0
         ? Tr("실행한 쿼리 기록을 지우지 않고 남겨요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.")
         : Tr("%@일이 지난 쿼리 기록은 자동으로 지워요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.", QueryHistory.KeepDays);
+
+    /// 안전 > 운영 접속 자동 끊기 (끔 · 10분 · 30분(기본) · 60분, 1.4.0)
+    public IReadOnlyList<string> ProdIdleLabels => [.. AppState.ProdIdleChoices.Select(m => m == 0 ? Tr("끔") : Tr("%@분", m))];
+    [ObservableProperty] private int _prodIdleIndex;
+    partial void OnProdIdleIndexChanged(int value)
+    {
+        if (value < 0 || value >= AppState.ProdIdleChoices.Length) return;
+        var m = AppState.ProdIdleChoices[value];
+        Prefs.Set(AppState.ProdIdleMinutesKey, m);
+        App?.Log(LogLevel.Info, LogSource.App, m == 0 ? Tr("운영 접속 자동 끊기를 껐어요") : Tr("운영 접속 자동 끊기: %@분", m),
+                 audit: new AuditRecord(AuditAction.Settings, "GodDB", m == 0 ? "운영 자동 끊기 끔" : $"운영 자동 끊기 {m}분"));
+    }
 
     [ObservableProperty] private bool _logFileEnabled;
     partial void OnLogFileEnabledChanged(bool value) => AppStartup.SetLogFileEnabled(value);

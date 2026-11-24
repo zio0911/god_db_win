@@ -103,7 +103,12 @@ public partial class MainWindow : Window
     public void StartUp(UpdateService? updates)
     {
         App.Updates = updates;
-        App.Fire(App.RunStartupAsync);
+        App.Fire(async () =>
+        {
+            await App.RunStartupAsync();
+            // 운영 접속 자동 끊기 감시 (설정 > 일반 > 안전)
+            App.StartIdleWatcher();
+        });
         // 지난번 이전 버전 설치가 실패했으면 알린다 (Mac reportHelperFailureIfAny)
         App.Fire(() => PreviousVersionInstaller.ReportPendingResultAsync(App));
     }

@@ -124,7 +124,16 @@ public sealed class RedisSession : IAsyncDisposable
     private readonly object _sync = new();
     private RedisTopology _topology = new RedisTopology.Standalone();
     private int _db;
-    private string? _password;
+    /// 연결할 때 받은 비밀번호. 다시 읽어 올 곳(passwordProvider)이 있으면 연결 뒤 비운다 (메모리에 덜 남게, 1.4.1)
+    private string? _storedPassword;
+    private Func<string?>? _passwordProvider;
+    /// 노드 · 구독 · 스트림 연결을 새로 열 때 쓰는 비밀번호
+    private string? _password => _storedPassword ?? _passwordProvider?.Invoke();
+    /// 자동 새로고침처럼 사람이 하지 않은 명령 — 마지막 사용 시각을 바꾸지 않는다 (Mac @TaskLocal passive)
+    private static readonly AsyncLocal<bool> PassiveFlag = new();
+    public static bool Passive => PassiveFlag.Value;
+    /// 마지막으로 사람이 이 접속을 쓴 시각 (UTC) — 운영 접속 자동 끊기에 쓴다
+    public DateTime LastActivity { get; private set; } = DateTime.UtcNow;
     /// 연결 과정 명령(AUTH · SELECT · INFO · CLUSTER SLOTS · 센티널 조회)의 응답 제한
     private TimeSpan _timeout = TimeSpan.FromSeconds(10);
     /// 노드 주소("host:port") → 연결 / SSH 터널
@@ -143,13 +152,23 @@ public sealed class RedisSession : IAsyncDisposable
     public static Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default) =>
         ConnectAsync(profile, password, TimeSpan.FromSeconds(10), ct);
 
+    public static Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, TimeSpan timeout,
+                                                  CancellationToken ct = default) =>
+        ConnectAsync(profile, password, timeout, null, ct);
+
+    /// - passwordProvider: 주면 연결한 뒤 비밀번호를 들고 있지 않고, 새 연결이 필요할 때마다 여기서 읽는다
     public static async Task<RedisSession> ConnectAsync(ConnectionProfile profile, string? password, TimeSpan timeout,
-                                                        CancellationToken ct = default)
+                                                        Func<string?>? passwordProvider, CancellationToken ct = default)
     {
         var s = new RedisSession(profile) { _timeout = timeout };
         try
         {
             await s.OpenAsync(password, ct);
+            if (passwordProvider != null)
+            {
+                s._passwordProvider = passwordProvider;
+                s._storedPassword = null;
+            }
         }
         catch
         {
@@ -184,7 +203,7 @@ public sealed class RedisSession : IAsyncDisposable
 
     private async Task OpenAsync(string? password, CancellationToken ct)
     {
-        _password = password;
+        _storedPassword = password;
         switch (Profile.RedisMode)
         {
             case RedisMode.Sentinel:
@@ -305,7 +324,36 @@ public sealed class RedisSession : IAsyncDisposable
             ServerName = Profile.Ssh == null && !HostResolver.IsIPAddress(host) ? host : null,
             UseTls = Profile.UseTLS, Username = Profile.Username, Password = password, Database = database,
             Timeout = _timeout,
+            Tls = Drivers.TlsPolicy.Of(Profile, CertificateHost(host, Profile.Host)),
         };
+    }
+
+    /// 인증서 이름 확인에 쓸 호스트: 노드 주소가 이름이면 그 이름, IP 면(Cluster · Sentinel 이 알려 준 노드) 접속 정보의 이름
+    public static string CertificateHost(string node, string configured)
+    {
+        if (!HostResolver.IsIPAddress(node)) return node;
+        var first = RedisCluster.SentinelAddresses(configured, 0).FirstOrDefault().Host ?? configured;
+        return HostResolver.IsIPAddress(first) || first.Length == 0 ? node : first;
+    }
+
+    /// 첫 연결의 TLS 상태 (상태창 — F9-3)
+    public Drivers.TlsStatus TlsStatus
+    {
+        get
+        {
+            lock (_sync)
+                return _conns.TryGetValue(_primary, out var c) ? c.TlsStatus
+                    : Profile.UseTLS ? Drivers.TlsStatus.Unchecked : Drivers.TlsStatus.Off;
+        }
+    }
+
+    /// 사람이 하지 않은 명령(자동 새로고침)을 실행한다 — 마지막 사용 시각을 바꾸지 않는다
+    public static async Task RunPassiveAsync(Func<Task> body)
+    {
+        var old = PassiveFlag.Value;
+        PassiveFlag.Value = true;
+        try { await body(); }
+        finally { PassiveFlag.Value = old; }
     }
 
     /// 노드 연결 (없거나 끊겼으면 연다)
@@ -339,6 +387,7 @@ public sealed class RedisSession : IAsyncDisposable
     /// 명령을 맞는 노드로 보낸다. MOVED/ASK 면 따라간다. raw 면 서버 오류도 값으로 돌려준다.
     private async Task<RespValue> ExecAsync(IReadOnlyList<string> args, bool raw = false, CancellationToken ct = default)
     {
+        if (!Passive) LastActivity = DateTime.UtcNow;
         var addr = AddressForKey(RedisCluster.RoutingKey(args));
         bool asking = false;
         for (int attempt = 0; attempt < 5; attempt++)

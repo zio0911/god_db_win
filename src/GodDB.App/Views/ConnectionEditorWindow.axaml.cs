@@ -19,6 +19,13 @@ public partial class ConnectionEditorWindow : Window
         Vm = new ConnectionEditorViewModel(app, (ConnectionProfile)value, app.EditingIsNew);
         DataContext = Vm;
         PasswordBox.AuthenticatedReveal += Vm.OnAuthenticatedReveal;
+        // 연결 테스트에서 만난 인증서 · SSH 호스트 키 확인 창 (F9-3 · F9-4)
+        Vm.AskSecurity = async prompt =>
+        {
+            var w = new SecurityPromptWindow(prompt, Vm.Name);
+            await w.ShowDialog(this);
+            return w.Accepted;
+        };
         PickKeyButton.Click += async (_, _) => await PickKeyAsync();
         GroupPick.Click += (_, _) => ShowGroups();
         GroupPick.IsVisible = app.ProfileGroups.Count > 0;

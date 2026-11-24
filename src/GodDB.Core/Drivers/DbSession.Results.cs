@@ -10,8 +10,7 @@ public sealed partial class DbSession
     /// 수동 커밋 모드이거나 이미 열린 트랜잭션이 있으면 거기에 합류하고 커밋하지 않는다 (사용자가 커밋/롤백).
     public async Task ExecuteInTransactionAsync(IReadOnlyList<string> statements, CancellationToken ct = default)
     {
-        if (Profile.ReadOnly && statements.Any(s => !SqlText.IsReadOnly(s)))
-            throw new GodDbException(DbErrorKind.ReadOnlyBlocked);
+        foreach (var s in statements) CheckReadOnly(s);
         if (!AutoCommit || InTransaction)
         {
             foreach (var s in statements) await ExecuteAsync(s, 0, ct: ct);
