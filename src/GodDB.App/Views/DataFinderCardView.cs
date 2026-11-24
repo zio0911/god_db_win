@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
@@ -19,7 +20,9 @@ public static class DataFinderCardView
     public static Control Build(AppState app, Guid messageId, DataFinderCard card, bool running)
     {
         var s = new StackPanel { Spacing = 6 };
-        s.Children.Add(new TextBlock { Text = "🔎 " + card.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        var titleIcon = new SymbolIcon(Symbol.Magnifier) { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 6, 0) };
+        DockPanel.SetDock(titleIcon, Dock.Left);
+        s.Children.Add(new DockPanel { Children = { titleIcon, new TextBlock { Text = card.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap } } });
         if (card.ModelProblem is { } m)
             ModelProblem(s, app, card, m, running);
         else if (card.Current is { } a)
@@ -77,10 +80,10 @@ public static class DataFinderCardView
         var buttons = new WrapPanel { Orientation = Orientation.Horizontal };
         buttons.Children.Add(Small(Tr("데이터 보기"), () => app.FinderViewData(card), "FinderViewData"));
         buttons.Children.Add(Small(Tr("SQL 넣기"), () => app.FinderInsertSql(card), "FinderInsertSql"));
-        var yes = Small("👍 " + Tr("맞아요"), () => app.FinderConfirm(messageId), "FinderConfirm");
+        var yes = Small(Symbol.ThumbsUp, Tr("맞아요"), () => app.FinderConfirm(messageId), "FinderConfirm");
         yes.IsEnabled = !a.Confirmed;
         buttons.Children.Add(yes);
-        buttons.Children.Add(Small("👎 " + Tr("아니에요"), () => app.FinderReject(messageId), "FinderReject"));
+        buttons.Children.Add(Small(Symbol.ThumbsDown, Tr("아니에요"), () => app.FinderReject(messageId), "FinderReject"));
         if (card.FromNotes) buttons.Children.Add(RefindButton(app, card, running));
         s.Children.Add(buttons);
     }
@@ -118,7 +121,7 @@ public static class DataFinderCardView
 
     private static Button RefindButton(AppState app, DataFinderCard card, bool running)
     {
-        var b = Small("⟳ " + Tr("다시 찾기"), () => app.FindData(card.Question, skipNotes: true), "FinderRefind");
+        var b = Small(Symbol.Refresh, Tr("다시 찾기"), () => app.FindData(card.Question, skipNotes: true), "FinderRefind");
         b.IsEnabled = !running;
         return b;
     }
@@ -160,6 +163,23 @@ public static class DataFinderCardView
     {
         var b = new Button { Content = text, Classes = { "hover" }, FontSize = 11, Name = name };
         b.Click += (_, _) => click();
+        return b;
+    }
+
+    /// 아이콘 + 글자 작은 단추 (Mac Label(text, systemImage:))
+    private static Button Small(Symbol symbol, string text, Action click, string name)
+    {
+        var b = Small(text, click, name);
+        b.Content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children =
+            {
+                new SymbolIcon(symbol) { Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center },
+            },
+        };
         return b;
     }
 }

@@ -239,13 +239,14 @@ public partial class ModelingView : UserControl
         issueFlyout.Opening += (_, _) => issueFlyout.Content = IssueList(vm, issueFlyout);
         _issueButton.Flyout = issueFlyout;
         // 이름이 보이는 내보내기 메뉴 (Mac 1.4.0: PNG 버튼 → 모델링 파일 · 테이블 명세서 · PNG)
-        ExportButton = new Button { Content = "📤 " + Tr("내보내기") + " ▾", Classes = { "hover" } };
+        ExportButton = new Button { Content = SymbolIcon.WithText(Symbol.Upload, Tr("내보내기") + " ▾"), Classes = { "hover" } };
         ToolTip.SetTip(ExportButton, Tr("내보내기 — 모델링 파일(.goddbmodel), 테이블 명세서(엑셀), 다이어그램 PNG 로 저장해요"));
         ExportButton.Flyout = ExportMenu(() => vm.ModelId);
         _compareButton = Ui.Button("⇄ " + Tr("DB와 비교"), () => OpenDialog(m => new ModelCompareWindow(vm.App, m)));
         _compareButton.Classes.Add("hover");
         ToolTip.SetTip(_compareButton, Tr("연결된 DB 와 비교해서 모델에 맞추는 ALTER SQL 을 만들어요 (Synchronize)"));
-        var sql = Ui.Button("📄 " + Tr("SQL 추출"), () => OpenDialog(m => new ModelSqlWindow(vm.App, m)), accent: true);
+        var sql = Ui.Button(Tr("SQL 추출"), () => OpenDialog(m => new ModelSqlWindow(vm.App, m)), accent: true);
+        sql.Content = SymbolIcon.WithText(Symbol.Doc, Tr("SQL 추출"));
         ToolTip.SetTip(sql, Tr("SQL 추출 — 모델을 CREATE TABLE · FK SQL 로 뽑아 복사하거나 저장해요"));
         var right = Ui.HStack(8, _issueButton, ExportButton, _compareButton, sql);
         foreach (var c in right.Children) c.VerticalAlignment = VerticalAlignment.Center;

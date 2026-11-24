@@ -64,7 +64,9 @@
               <TextBlock Classes="label" Text="{l:T 그룹}"/>
               <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
                 <TextBox Text="{Binding Group}" PlaceholderText="{l:T 비우면 그룹 없음}"/>
-                <Button Grid.Column="1" x:Name="GroupPick" Classes="borderless" Content="📁" ToolTip.Tip="{l:T 기존 그룹에서 고르기}"/>
+                <Button Grid.Column="1" x:Name="GroupPick" Classes="borderless" ToolTip.Tip="{l:T 기존 그룹에서 고르기}">
+                  <c:SymbolIcon Symbol="Folder"/>
+                </Button>
               </Grid>
             </Grid>
             <CheckBox Content="{Binding ReadOnlyTitle}" IsChecked="{Binding ReadOnly}" Margin="150,4,0,0"/>
@@ -152,7 +154,7 @@
                          Text="{l:T '인증서를 확인하지 않으면 중간에서 가로채도 알 수 없어요. 암호화만 해요.'}"/>
               <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding ShowTlsVerifyHelp}" Text="{Binding TlsVerifyHelp}"/>
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,4,0,0" IsVisible="{Binding HasTlsPin}">
-                <TextBlock Text="📌" VerticalAlignment="Top"/>
+                <c:SymbolIcon Symbol="Pin" Classes="secondary" VerticalAlignment="Top" Margin="0,2,0,0"/>
                 <StackPanel Grid.Column="1" Spacing="2">
                   <TextBlock Classes="caption" Text="{l:T 고정한 인증서}"/>
                   <SelectableTextBlock x:Name="TlsPinText" Classes="caption mono" Text="{Binding TlsPin}" TextWrapping="Wrap"/>

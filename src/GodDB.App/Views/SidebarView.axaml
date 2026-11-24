@@ -78,7 +78,7 @@
                   PointerPressed="OnGroupPointerPressed" PointerMoved="OnGroupPointerMoved"
                   Padding="0,2" Tag="{Binding Name}">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
-              <TextBlock Text="📁" FontSize="11" VerticalAlignment="Center"/>
+              <c:SymbolIcon Symbol="FolderFill" Classes="accent" Opacity="0.8" Width="12" Height="12" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="2" Text="{Binding ConnectedText}" IsVisible="{Binding HasConnected}" FontSize="10"
                          Foreground="{DynamicResource GreenBrush}" ToolTip.Tip="{Binding ConnectedTip}" VerticalAlignment="Center"/>
@@ -96,7 +96,7 @@
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0"
             IsVisible="{Binding ShowSchema}" Padding="8,6">
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-        <TextBlock Text="🔍" Classes="secondary" VerticalAlignment="Center"/>
+        <c:SymbolIcon Symbol="Magnifier" Classes="secondary" VerticalAlignment="Center"/>
         <TextBox Grid.Column="1" x:Name="FilterBox" Text="{Binding App.TableFilter}" PlaceholderText="{l:T 테이블 검색}"
                  BorderThickness="0" Background="Transparent"/>
       </Grid>
@@ -119,7 +119,7 @@
         <!-- 접속 찾기 (Esc 로 지움) -->
         <Border IsVisible="{Binding HasProfiles}" Background="#0F808080" CornerRadius="6" Padding="6,0" Margin="0,0,0,4">
           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
-            <TextBlock Text="🔍" FontSize="11" Classes="secondary" VerticalAlignment="Center"/>
+            <c:SymbolIcon Symbol="Magnifier" Classes="secondary" Width="12" Height="12" VerticalAlignment="Center"/>
             <TextBox Grid.Column="1" x:Name="ConnectionSearch" Text="{Binding ConnectionQuery}" PlaceholderText="{l:T '접속 찾기 (이름 · 주소 · DB · 그룹)'}"
                      BorderThickness="0" Background="Transparent" MinHeight="22" Padding="0,2" KeyDown="OnConnectionSearchKey"/>
             <Button Grid.Column="2" Classes="borderless" Content="✕" FontSize="10" Padding="2,0" Command="{Binding ClearConnectionQueryCommand}"

@@ -377,7 +377,8 @@ public class DiagramTests
         {
             // 처음에는 소개 + "관계 분석 시작" + 예시 질문
             var buttons = panel.GetLogicalDescendants().OfType<Button>().ToList();
-            Assert.Contains(buttons, b => (b.Content as string)?.Contains("관계 분석 시작") == true);
+            Assert.Contains(buttons, b => b.Content is StackPanel sp && sp.Children[0] is GodDB.App.Controls.SymbolIcon { Symbol: GodDB.App.Controls.Symbol.Sparkles }
+                                         && sp.Children.OfType<TextBlock>().Any(t => t.Text == "관계 분석 시작"));
             Assert.Equal(4, buttons.Count(b => b.Content is TextBlock t && AiChat.DiagramExampleQuestions.Contains(t.Text!)));
 
             // Enter 로 보내기

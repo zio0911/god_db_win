@@ -48,7 +48,7 @@ public sealed class QuickOpenWindow : Window
         SearchBox.AddHandler(KeyDownEvent, OnSearchKey, RoutingStrategies.Tunnel);
 
         var top = new DockPanel { Margin = new Thickness(12) };
-        var icon = new TextBlock { Text = "⌕", FontSize = 18, Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var icon = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.Magnifier) { Width = 17, Height = 17, Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(icon, Dock.Left);
         DockPanel.SetDock(_loading, Dock.Right);
         top.Children.Add(icon);
@@ -159,7 +159,7 @@ public sealed class QuickOpenWindow : Window
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("18,Auto,*,Auto"), ColumnSpacing = 8 };
         Control icon = item.Kind == QuickOpen.Kind.Table
             ? new GodDB.App.Controls.TableCellsIcon { Width = 15, Height = 15, Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))) }
-            : new TextBlock { Text = KindIcon(item.Kind), Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))), TextAlignment = TextAlignment.Center };
+            : new GodDB.App.Controls.SymbolIcon(KindIcon(item.Kind)) { Width = 15, Height = 15, Foreground = new SolidColorBrush(Color.Parse(ColorOf(item.Kind))) };
         var name = new TextBlock { Text = item.Name, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock? detail = null;
         if (item.Kind == QuickOpen.Kind.Column) detail = new TextBlock { Text = item.Detail, Classes = { "secondary" } };
@@ -185,16 +185,16 @@ public sealed class QuickOpenWindow : Window
         return g;
     }
 
-    private static string KindIcon(QuickOpen.Kind k) => k switch
+    /// 종류 아이콘 (Mac QuickOpenView.icon — 테이블은 TableCellsIcon 으로 따로 그린다)
+    internal static GodDB.App.Controls.Symbol KindIcon(QuickOpen.Kind k) => k switch
     {
-        QuickOpen.Kind.Table => "▦",
-        QuickOpen.Kind.View => "👁",
-        QuickOpen.Kind.Procedure => "⚙",
-        QuickOpen.Kind.Function => "ƒ",
-        QuickOpen.Kind.Trigger => "⚡",
-        QuickOpen.Kind.Column => "≡",
-        QuickOpen.Kind.SavedQuery => "🔖",
-        _ => "🛢",
+        QuickOpen.Kind.View => GodDB.App.Controls.Symbol.Eye,
+        QuickOpen.Kind.Procedure => GodDB.App.Controls.Symbol.Gear,
+        QuickOpen.Kind.Function => GodDB.App.Controls.Symbol.Function,
+        QuickOpen.Kind.Trigger => GodDB.App.Controls.Symbol.Bolt,
+        QuickOpen.Kind.Column => GodDB.App.Controls.Symbol.AlignLeft,
+        QuickOpen.Kind.SavedQuery => GodDB.App.Controls.Symbol.Bookmark,
+        _ => GodDB.App.Controls.Symbol.Cylinder,
     };
 
     private static string ColorOf(QuickOpen.Kind k) => k switch

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.Input;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.ViewModels;
 
@@ -123,7 +124,7 @@ public sealed class SaveQueryView : Border, SavedQueriesWindow.IFocusFirst
         Row(2, Tr("보이는 곳"), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { AllConnections, ThisConnection } });
 
         Child = Ui.Stack(12,
-            Ui.Headline("🔖 " + Tr("쿼리 저장")),
+            Ui.IconText(Symbol.Bookmark, Tr("쿼리 저장"), "headline"),
             preview,
             form,
             ParamsText,
@@ -183,7 +184,7 @@ public sealed class SavedQueryListView : DockPanel, SavedQueriesWindow.IFocusFir
             }
         };
         var top = new DockPanel { Margin = new Thickness(12) };
-        var icon = new TextBlock { Text = "⌕", Classes = { "secondary" }, FontSize = 16, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var icon = new SymbolIcon(Symbol.Magnifier) { Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(icon, Dock.Left);
         top.Children.Add(icon);
         top.Children.Add(SearchBox);
@@ -206,7 +207,7 @@ public sealed class SavedQueryListView : DockPanel, SavedQueriesWindow.IFocusFir
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Text = "🔖", FontSize = 28, HorizontalAlignment = HorizontalAlignment.Center, Opacity = 0.5 },
+                Ui.BigIcon(Symbol.Bookmark),
                 _emptyTitle,
                 new TextBlock { Text = Tr("편집기에서 Ctrl+Alt+S 로 지금 쿼리를 저장하세요."), Classes = { "secondary" }, HorizontalAlignment = HorizontalAlignment.Center },
             },
@@ -289,7 +290,7 @@ public sealed class SavedQueryListView : DockPanel, SavedQueriesWindow.IFocusFir
         left.Children.Add(new TextBlock { Text = q.Name, TextTrimming = TextTrimming.CharacterEllipsis });
         if (q.Scope == SavedQuery.QueryScope.Profile)
         {
-            var link = new TextBlock { Text = "🔗", Classes = { "caption" }, VerticalAlignment = VerticalAlignment.Center };
+            var link = new SymbolIcon(Symbol.Link) { Width = 11, Height = 11, Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(link, Tr("이 접속만"));
             left.Children.Add(link);
         }
@@ -432,7 +433,7 @@ public sealed class SavedQueryFillView : Border, SavedQueriesWindow.IFocusFirst
         KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.Enter, KeyModifiers.Control), Command = new RelayCommand(() => Apply(run: true)) });
 
         Child = Ui.Stack(12,
-            Ui.Headline("🔖 " + (query?.Name ?? Tr("저장 쿼리"))),
+            Ui.IconText(Symbol.Bookmark, query?.Name ?? Tr("저장 쿼리"), "headline"),
             grid,
             Ui.Caption(Tr("숫자는 그대로, 그 밖은 따옴표로 감싸요. 쉼표로 나누면 목록(IN (…))이 돼요.")),
             preview,

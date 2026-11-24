@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.Services;
 using GodDB.App.ViewModels;
@@ -53,20 +54,24 @@ public sealed class TableDescriptionsWindow : Window
 
         var header = new StackPanel { Spacing = 4 };
         var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        titleRow.Children.Add(new TextBlock { Text = "📄", Foreground = new SolidColorBrush(Purple), VerticalAlignment = VerticalAlignment.Center });
+        titleRow.Children.Add(new SymbolIcon(Symbol.Doc) { Foreground = new SolidColorBrush(Purple), VerticalAlignment = VerticalAlignment.Center });
         titleRow.Children.Add(Ui.Headline(Tr("테이블 설명 (AI 참고)")));
         titleRow.Children.Add(new TextBlock { Text = $"· {Profile?.Name ?? ""} / {Request.Database}", Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
         header.Children.Add(titleRow);
         header.Children.Add(new TextBlock { Text = Tr("AI 어시스턴트 · 데이터 찾기가 질문에 맞는 테이블의 설명 · 코드 값 · 규칙을 함께 봐요 (이 PC 의 Ollama 에만)."), Classes = { "secondary" }, TextWrapping = TextWrapping.Wrap });
 
-        var import = Ui.Button("⬇ " + Tr("JSON 가져오기…"), () => _app.Fire(ImportAsync));
-        ExportButton = Ui.Button("⬆ " + Tr("내보내기…"), () => _app.Fire(ExportAsync));
-        ClearButton = Ui.Button("🗑 " + Tr("지우기"), () => _app.Fire(ConfirmClearAsync));
+        var import = Ui.Button(Tr("JSON 가져오기…"), () => _app.Fire(ImportAsync));
+        import.Content = SymbolIcon.WithText(Symbol.Download, Tr("JSON 가져오기…"));
+        ExportButton = Ui.Button(Tr("내보내기…"), () => _app.Fire(ExportAsync));
+        ExportButton.Content = SymbolIcon.WithText(Symbol.Upload, Tr("내보내기…"));
+        ClearButton = Ui.Button(Tr("지우기"), () => _app.Fire(ConfirmClearAsync));
+        ClearButton.Content = SymbolIcon.WithText(Symbol.Trash, Tr("지우기"));
         ClearButton.Classes.Add("danger");
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { import, ExportButton, ClearButton } };
 
         SkeletonButton = Ui.Button(Tr("빈 양식 내려받기…"), () => _app.Fire(SaveSkeletonAsync));
-        CopyRequestButton = Ui.Button("📋 " + Tr("요청문 샘플 복사"), () => _app.Fire(CopyRequestAsync));
+        CopyRequestButton = Ui.Button(Tr("요청문 샘플 복사"), () => _app.Fire(CopyRequestAsync));
+        CopyRequestButton.Content = SymbolIcon.WithText(Symbol.Copy, Tr("요청문 샘플 복사"));
         var agent = AgentSection();
 
         SearchBox = new TextBox { PlaceholderText = Tr("테이블 · 설명 찾기") };
@@ -449,8 +454,8 @@ public sealed class TableDescriptionsWindow : Window
     public async Task CopyRequestAsync()
     {
         await _app.Dialogs.SetClipboardTextAsync(TableDescriptionDoc.RequestPrompt(Request.Database, Profile?.Kind ?? DatabaseKind.Mysql, IsEnglish));
-        CopyRequestButton.Content = "✓ " + Tr("복사했어요");
-        Avalonia.Threading.DispatcherTimer.RunOnce(() => CopyRequestButton.Content = "📋 " + Tr("요청문 샘플 복사"), TimeSpan.FromSeconds(2));
+        CopyRequestButton.Content = SymbolIcon.WithText(Symbol.Checkmark, Tr("복사했어요"));
+        Avalonia.Threading.DispatcherTimer.RunOnce(() => CopyRequestButton.Content = SymbolIcon.WithText(Symbol.Copy, Tr("요청문 샘플 복사")), TimeSpan.FromSeconds(2));
     }
 
     public async Task ConfirmClearAsync()

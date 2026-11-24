@@ -212,6 +212,12 @@ public class Release143AiTests
         // 카드가 말풍선 대신 그려진다
         Assert.Contains(panel.GetLogicalDescendants().OfType<Border>(), b => b.Name == "FinderCard");
         Assert.Contains(panel.GetLogicalDescendants().OfType<TextBlock>(), t => t.Text == "📄 테이블 설명에서 찾음 (AI 호출 없음)");
+        // 맞아요 · 아니에요 · 다시 찾기 단추는 벡터 아이콘 (Mac hand.thumbsup / hand.thumbsdown / arrow.clockwise)
+        GodDB.App.Controls.Symbol IconOf(string name) =>
+            ((Panel)panel.GetLogicalDescendants().OfType<Button>().First(b => b.Name == name).Content!).Children.OfType<GodDB.App.Controls.SymbolIcon>().Single().Symbol;
+        Assert.Equal(GodDB.App.Controls.Symbol.ThumbsUp, IconOf("FinderConfirm"));
+        Assert.Equal(GodDB.App.Controls.Symbol.ThumbsDown, IconOf("FinderReject"));
+        Assert.Equal(GodDB.App.Controls.Symbol.Refresh, IconOf("FinderRefind"));
         // 일반 질문은 그대로 어시스턴트로 (데이터 찾기 아님)
         Assert.False(DataFinder.IsFindQuestion("이 쿼리 어디가 느려?"));
         w.Close();
@@ -300,6 +306,49 @@ public class Release143AiTests
         }
     }
 
+    // MARK: - 아이콘 (이모지 → Mac SF Symbols 모양 벡터)
+
+    [Fact]
+    public Task AssistantPanel_ButtonsUseVectorIcons() => UiThread.Run(() =>
+    {
+        var (app, _, _) = ConnectedApp();
+        var panel = new AssistantPanel { DataContext = app };
+        var w = new Window { Width = 420, Height = 700, Content = panel };
+        w.Show();
+        Pump();
+        GodDB.App.Controls.Symbol Icon(string name) => Assert.IsType<GodDB.App.Controls.SymbolIcon>(panel.FindControl<Button>(name)!.Content).Symbol;
+        Assert.Equal(GodDB.App.Controls.Symbol.PlusBubble, Icon("NewChat"));
+        Assert.Equal(GodDB.App.Controls.Symbol.History, Icon("HistoryButton"));
+        Assert.Equal(GodDB.App.Controls.Symbol.Bolt, Icon("QuickMenu"));
+        Assert.Equal(GodDB.App.Controls.Symbol.SendCircle, Icon("SendButton"));
+        Assert.Equal(GodDB.App.Controls.Symbol.StopCircle, Icon("StopButton"));
+        w.Close();
+    });
+
+    [Fact]
+    public void NewScreens_NoEmojiIcons()
+    {
+        // 1.4.x 로 새로 들어온 화면의 단추 · 제목 · 빈 화면 아이콘 (문장 안 ⚠ 와 Mac 문장 그대로인 Tr 키는 예외)
+        string[] emojis = ["📄", "⬇", "⬆", "🗑", "📋", "🔖", "🔗", "📤", "🕘", "📡", "💬", "🪄", "👍", "👎", "🛢", "👁", "📁", "📌", "🔍", "✨"];
+        foreach (var rel in new[]
+        {
+            "src/GodDB.App/Views/TableDescriptionsWindow.cs", "src/GodDB.App/Views/SavedQueriesWindow.cs", "src/GodDB.App/Views/PreviousVersionsWindow.cs",
+            "src/GodDB.App/Views/AssistantPanel.axaml", "src/GodDB.App/Views/DiagramAIPanel.cs",
+            "src/GodDB.App/Views/QuickOpenWindow.cs", "src/GodDB.App/Views/ConnectionEditorWindow.axaml", "src/GodDB.App/Views/SidebarView.axaml",
+        })
+        {
+            var src = File.ReadAllText(ToolbarSymbolTests.FindRepoFile(rel));
+            foreach (var e in emojis) Assert.False(src.Contains(e), $"{rel}: {e}");
+        }
+        // 데이터 찾기 카드: 단추만 (보낸 내용 칩의 📄 은 글자 그대로)
+        var finder = File.ReadAllText(ToolbarSymbolTests.FindRepoFile("src/GodDB.App/Views/DataFinderCardView.cs"));
+        Assert.DoesNotContain("👍", finder);
+        Assert.DoesNotContain("👎", finder);
+        var modeling = File.ReadAllText(ToolbarSymbolTests.FindRepoFile("src/GodDB.App/Views/ModelingView.axaml.cs"));
+        Assert.DoesNotContain("📤", modeling);
+        Assert.DoesNotContain("\"📄 \" + Tr(\"SQL 추출\")", modeling);
+    }
+
     // MARK: - 테이블 설명 창
 
     private sealed class FileDialogs : NullDialogs
@@ -334,8 +383,17 @@ public class Release143AiTests
         Assert.False(w.ExportButton.IsEnabled);
         Assert.True(w.SkeletonButton.IsEnabled);
 
+        // 단추 아이콘은 Mac SF Symbols 모양의 벡터 (이모지 아님)
+        static GodDB.App.Controls.Symbol Icon(Button b) => Assert.IsType<GodDB.App.Controls.SymbolIcon>(((StackPanel)b.Content!).Children[0]).Symbol;
+        Assert.Equal(GodDB.App.Controls.Symbol.Upload, Icon(w.ExportButton));
+        Assert.Equal(GodDB.App.Controls.Symbol.Trash, Icon(w.ClearButton));
+        Assert.Equal(GodDB.App.Controls.Symbol.Copy, Icon(w.CopyRequestButton));
+        Assert.Contains(w.GetLogicalDescendants().OfType<Button>(), b => b.Content is StackPanel sp && sp.Children[0] is GodDB.App.Controls.SymbolIcon { Symbol: GodDB.App.Controls.Symbol.Download });
+        Assert.DoesNotContain(w.GetLogicalDescendants().OfType<Button>(), b => b.Content is string t && new[] { "📄", "⬇", "⬆", "🗑", "📋" }.Any(t.Contains));
+
         // 요청문 샘플 복사 (양식 안 instructions 와 같은 글)
         await w.CopyRequestAsync();
+        Assert.Equal(GodDB.App.Controls.Symbol.Checkmark, Icon(w.CopyRequestButton));   // 복사 뒤 2초 동안 체크 표시
         Assert.Equal(TableDescriptionDoc.RequestPrompt("shop", DatabaseKind.Mysql, false), dialogs.Clipboard);
 
         // 빈 양식: 이름 · 코멘트 · FK 만 (데이터 값 없음) + instructions

@@ -299,7 +299,7 @@ public partial class AssistantPanel : UserControl
                 Classes = { "hover" },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                Content = new TextBlock { Text = "⚡ " + q, FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                Content = IconLine(Symbol.Bolt, q),
                 IsEnabled = !Vm.Chat.Running,
             };
             b.Click += (_, _) => Vm.AskQuick(q);
@@ -379,11 +379,19 @@ public partial class AssistantPanel : UserControl
         }
         if (Vm!.CanApplyPhysicalNames(m))
         {
-            var apply = new Button { Content = "🪄 " + Tr("물리명 적용 (빈 칸만)"), Classes = { "hover" }, FontSize = 11 };
+            var apply = new Button { Content = IconLine(Symbol.Wand, Tr("물리명 적용 (빈 칸만)")), Classes = { "hover" }, FontSize = 11 };
             apply.Click += (_, _) => Vm.ApplyPhysicalNames(m);
             row.Children.Add(apply);
         }
         return row;
+    }
+
+    /// 작은 아이콘 + 줄바꿈되는 글자 (Mac Label(text, systemImage:).font(.caption))
+    private static DockPanel IconLine(Symbol symbol, string text)
+    {
+        var icon = new SymbolIcon(symbol) { Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 5, 0) };
+        DockPanel.SetDock(icon, Dock.Left);
+        return new DockPanel { Children = { icon, new TextBlock { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap } } };
     }
 
     private static IBrush? Res(string key) =>

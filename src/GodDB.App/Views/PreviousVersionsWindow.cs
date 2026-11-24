@@ -39,7 +39,7 @@ public sealed class PreviousVersionsWindow : Window
 
         _close = Ui.Button(Tr("닫기"), Close, isCancel: true);
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        header.Children.Add(Ui.Text("🕘 " + Tr("이전 버전 설치"), "title"));
+        header.Children.Add(Ui.IconText(Symbol.History, Tr("이전 버전 설치"), "title"));
         var current = Ui.Text(Tr("지금 버전 %@", PreviousVersionInstaller.CurrentVersion), "secondary");
         current.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(current, 1);
@@ -88,7 +88,7 @@ public sealed class PreviousVersionsWindow : Window
                 var retry = Ui.Button(Tr("다시 시도"), () => _app.Fire(Installer.LoadAsync));
                 var github = new Button { Content = Tr("GitHub 에서 직접 받기"), Classes = { "link" } };
                 github.Click += (_, _) => _app.Dialogs.OpenExternal(PreviousVersions.ReleasesPage.ToString());
-                var failed = Ui.Stack(8, Ui.Text("📡", "title"), Ui.Headline(Tr("릴리스 목록을 가져오지 못했어요")),
+                var failed = Ui.Stack(8, Ui.BigIcon(Symbol.WifiExclamation, 34), Ui.Headline(Tr("릴리스 목록을 가져오지 못했어요")),
                                       Ui.Caption(Installer.ListError), Ui.HStack(8, retry, github));
                 foreach (var c in failed.Children) c.HorizontalAlignment = HorizontalAlignment.Center;
                 return Center(failed);
