@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using GodDB.App.Controls;
 using GodDB.App.Infrastructure;
 using GodDB.App.Services;
 using GodDB.App.ViewModels;
@@ -66,7 +67,9 @@ public sealed class TableSpecExportWindow : Window
         {
             Padding = new Thickness(16),
             Child = Ui.Stack(12,
-                Ui.Headline("▦ " + Tr("테이블 명세서로 저장하기…")),
+                // Mac Label(systemImage: "tablecells") — 파란 격자 아이콘
+                Ui.HStack(6, new TableCellsIcon { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center },
+                          Ui.Headline(Tr("테이블 명세서로 저장하기…"))),
                 form,
                 Ui.Caption(Tr("목차 시트와 테이블마다 한 시트(컬럼 · 인덱스 · 관계)로 된 엑셀 파일을 만들어요.")),
                 buttons),
