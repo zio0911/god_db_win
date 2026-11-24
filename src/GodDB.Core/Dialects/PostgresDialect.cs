@@ -3,7 +3,7 @@ using GodDB.Core.Schema;
 namespace GodDB.Core.Dialects;
 
 /// PostgreSQL. 사이드바의 "DB" 선택은 스키마(search_path)를 뜻한다. 접속 DB 는 접속 설정에서 고른다.
-public sealed class PostgresDialect : SqlDialect
+public sealed partial class PostgresDialect : SqlDialect
 {
     public override DatabaseKind Kind => DatabaseKind.Postgres;
 
@@ -128,7 +128,11 @@ public sealed class PostgresDialect : SqlDialect
         var lines = table.Columns.OrderBy(c => c.Position).Select(c => "  " + ColumnDefinition(c)).ToList();
         if (table.Indexes.FirstOrDefault(i => i.IsPrimary) is IndexMeta pk)
             lines.Add($"  CONSTRAINT {QuoteIdent(pk.Name)} PRIMARY KEY {IndexColumns(pk)}");
-        var output = new List<string> { $"CREATE TABLE {QuoteIdent(table.Name)} (\n" + string.Join(",\n", lines) + "\n);" };
+        var sequences = table.Columns.Select(c => (Column: c, Name: SequenceName(c))).Where(x => x.Name != null).ToList();
+        var output = sequences.Select(x => CreateSequenceSql(x.Name!, x.Column)).ToList();
+        output.Add($"CREATE TABLE {QuoteIdent(table.Name)} (\n" + string.Join(",\n", lines) + "\n);");
+        // serial 처럼 테이블을 지우면 시퀀스도 함께 지워지게
+        output.AddRange(sequences.Select(x => $"ALTER SEQUENCE {x.Name} OWNED BY {QuoteIdent(table.Name)}.{QuoteIdent(x.Column.Name)};"));
         foreach (var i in table.Indexes.Where(i => !i.IsPrimary))
             output.Add($"CREATE {(i.Unique ? "UNIQUE " : "")}INDEX {QuoteIdent(i.Name)} ON {QuoteIdent(table.Name)} {IndexColumns(i)};");
         if (table.Comment.Length > 0)
@@ -179,7 +183,10 @@ public sealed class PostgresDialect : SqlDialect
                     output.AddRange(AlterColumn(t, old, @new));
                     break;
                 case SchemaChange.AddColumn(var c, _):
+                    var sequence = SequenceName(c);
+                    if (sequence != null) output.Add(CreateSequenceSql(sequence, c));
                     output.Add($"ALTER TABLE {t} ADD COLUMN {ColumnDefinition(c)};");
+                    if (sequence != null) output.Add($"ALTER SEQUENCE {sequence} OWNED BY {t}.{QuoteIdent(c.Name)};");
                     if (c.Comment.Length > 0)
                         output.Add($"COMMENT ON COLUMN {t}.{QuoteIdent(c.Name)} IS {QuoteString(c.Comment)};");
                     break;
@@ -195,6 +202,26 @@ public sealed class PostgresDialect : SqlDialect
         }
         return string.Join("\n", output);
     }
+
+    /// 기본값이 `nextval('시퀀스'::regclass)` (serial 컬럼)이면 시퀀스 이름 (SQL 에 그대로 쓸 수 있는 형태).
+    /// 다른 스키마에 테이블을 만들 때 시퀀스가 없으면 CREATE TABLE 이 실패하므로 먼저 만든다.
+    public static string? SequenceName(ColumnMeta c)
+    {
+        if (c.DefaultValue is not { } d || !NextvalRegex().IsMatch(d)) return null;
+        var inner = d["nextval('".Length..];
+        var end = inner.LastIndexOf('\'');
+        return end < 0 ? null : inner[..end].Replace("''", "'");
+    }
+
+    public string CreateSequenceSql(string name, ColumnMeta c)
+    {
+        var type = c.ColumnType.ToLowerInvariant();
+        var asType = type is "smallint" or "integer" or "bigint" ? $" AS {type}" : "";
+        return $"CREATE SEQUENCE IF NOT EXISTS {name}{asType};";
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^nextval\('((?:[^']|'')+)'(::regclass)?\)$")]
+    private static partial System.Text.RegularExpressions.Regex NextvalRegex();
 
     private List<string> AlterColumn(string t, ColumnMeta old, ColumnMeta @new)
     {

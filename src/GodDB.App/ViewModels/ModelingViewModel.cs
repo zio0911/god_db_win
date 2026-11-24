@@ -87,6 +87,8 @@ public sealed partial class ModelingViewModel : ObservableObject
     [ObservableProperty] private int _editorTab;
     /// 관계 편집기의 "FK 컬럼도 삭제"
     [ObservableProperty] private bool _dropColumns = true;
+    /// 테이블 명세서 저장 창을 띄울 모델 (Mac ModelingState.tableSpecModel — 화면이 보고 창을 연다)
+    [ObservableProperty] private DataModel? _tableSpecModel;
 
     /// 다이어그램을 다시 그려야 할 때 (모든 변경)
     public event Action? Redraw;
@@ -137,6 +139,8 @@ public sealed partial class ModelingViewModel : ObservableObject
     public bool CanCompare => App.State.IsConnected && App.SelectedProfile?.Kind.IsSql() == true;
     public bool IsConnected => App.State.IsConnected;
     public bool CanUndo => ModelId is { } id && Workspace.CanUndo(id);
+    /// 자동 정렬: 테이블이 있어야 한다 (Mac .disabled(model.tables.isEmpty))
+    public bool CanAutoLayout => Model?.Tables.Count > 0;
 
     public IReadOnlyList<ModelIssue> Issues => Model?.Issues() ?? [];
     public bool HasErrors => Issues.Any(i => i.Level == ModelIssueLevel.Error);
@@ -256,6 +260,7 @@ public sealed partial class ModelingViewModel : ObservableObject
         OnPropertyChanged(nameof(Model));
         OnPropertyChanged(nameof(HasModel));
         OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanAutoLayout));
         OnPropertyChanged(nameof(Issues));
         OnPropertyChanged(nameof(HasErrors));
         OnPropertyChanged(nameof(IssueBadge));
@@ -319,19 +324,26 @@ public sealed partial class ModelingViewModel : ObservableObject
 
     public static readonly FileFilter ModelFileFilter = new(Tr("GodDB 모델"), [$"*.{DataModel.FileExtension}"]);
     public static readonly FileFilter JsonFileFilter = new("JSON", ["*.json"]);
+    /// 모델 파일 열기 창의 첫 형식: 모델 파일과 JSON 을 한 번에 고를 수 있게 (Mac: allowedContentTypes = [모델 파일, .json]).
+    /// Windows 파일 창은 형식을 하나씩만 보여 줘서, 형식이 따로면 JSON 으로 저장한 모델은 형식을 바꿔야 보였다
+    public static readonly FileFilter OpenModelFilter = new(Tr("GodDB 모델"), [$"*.{DataModel.FileExtension}", "*.json"]);
 
+    /// 내보내기 > 모델링 파일 저장하기…
     public async Task ExportAsync(Guid id)
     {
         if (Workspace.Find(id) is not { } m) return;
-        var path = await App.Dialogs.SaveFileAsync(Tr("파일로 내보내기…"), ModelWorkspace.ExportFileName(m), [ModelFileFilter]);
+        var path = await App.Dialogs.SaveFileAsync(Tr("모델링 파일 저장하기…"), ModelWorkspace.ExportFileName(m), [ModelFileFilter]);
         if (path == null) return;
         try { Workspace.ExportFile(id, path); }
-        catch (Exception e) { await App.Dialogs.AlertAsync(Tr("파일로 내보내기…"), e.Message); }
+        catch (Exception e) { await App.Dialogs.AlertAsync(Tr("모델링 파일 저장하기…"), e.Message); }
     }
+
+    /// 내보내기 > 테이블 명세서로 저장하기…: 시스템명 · 작성자 · 작성일을 묻는 창부터 (Mac exportTableSpec)
+    public void ExportTableSpec(Guid id) => TableSpecModel = Workspace.Find(id)?.Clone();
 
     public async Task ImportAsync()
     {
-        var files = await App.Dialogs.OpenFilesAsync(Tr("모델 파일 열기…"), [ModelFileFilter, JsonFileFilter], multiple: true);
+        var files = await App.Dialogs.OpenFilesAsync(Tr("모델 파일 열기…"), [OpenModelFilter, ModelFileFilter, JsonFileFilter], multiple: true);
         if (files.Count == 0) return;
         var failed = Workspace.ImportFiles(files);
         AfterAdd();
@@ -483,6 +495,8 @@ public sealed partial class ModelingViewModel : ObservableObject
     {
         if (Model is not { } m) return;
         Checkpoint();
+        // 편집기가 지울 대상을 더 그리지 않게 선택부터 푼다 (Mac 1.4.3: 테이블을 지우면 아래 편집기가 옛 번호를 읽다가 앱이 꺼지던 문제)
+        Selection = null;
         switch (s)
         {
             case ModelSelection.Table t: m.RemoveTable(t.Id); break;
@@ -497,8 +511,8 @@ public sealed partial class ModelingViewModel : ObservableObject
     {
         if (Model is not { } m) return;
         Checkpoint();
-        m.RemoveRelation(id, DropColumns);
         Selection = null;
+        m.RemoveRelation(id, DropColumns);
         Changed(structure: true);
     }
 
@@ -568,12 +582,12 @@ public sealed partial class ModelingViewModel : ObservableObject
         return true;
     }
 
-    public async Task SavePngAsync(byte[] png)
+    public async Task SavePngAsync(byte[] png, DataModel? model = null)
     {
-        if (Model is not { } m) return;
-        var path = await App.Dialogs.SaveFileAsync(Tr("PNG 저장"), $"{m.Name}.png", [new FileFilter("PNG", ["*.png"])]);
+        if ((model ?? Model) is not { } m) return;
+        var path = await App.Dialogs.SaveFileAsync(Tr("다이어그램 PNG 저장하기…"), $"{m.Name}.png", [new FileFilter("PNG", ["*.png"])]);
         if (path == null) return;
         try { await File.WriteAllBytesAsync(path, png); }
-        catch (Exception e) { await App.Dialogs.AlertAsync(Tr("PNG 저장"), e.Message); }
+        catch (Exception e) { await App.Dialogs.AlertAsync(Tr("다이어그램 PNG 저장하기…"), e.Message); }
     }
 }

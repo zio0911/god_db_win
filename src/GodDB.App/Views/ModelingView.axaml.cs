@@ -27,7 +27,9 @@ public partial class ModelingView : UserControl
     private ScrollViewer? _canvasScroll;
     private TextBox? _nameBox;
     private ComboBox? _kindBox;
-    private Button? _undoButton, _issueButton, _compareButton;
+    private Button? _undoButton, _issueButton, _compareButton, _autoLayoutButton;
+    /// 도구 막대의 [내보내기] 메뉴 (모델링 파일 · 테이블 명세서 · PNG)
+    public Button? ExportButton { get; private set; }
     private TextBlock? _issueText, _zoomText, _hintText;
     private Border? _hint;
     private readonly List<(ModelTool Tool, Button Button)> _toolButtons = [];
@@ -70,6 +72,11 @@ public partial class ModelingView : UserControl
                 case nameof(ModelingViewModel.IssueBadge): SyncIssues(); break;
                 case nameof(ModelingViewModel.CanUndo): if (_undoButton != null) _undoButton.IsEnabled = vm.CanUndo; break;
                 case nameof(ModelingViewModel.CanCompare): if (_compareButton != null) _compareButton.IsEnabled = vm.CanCompare; break;
+                case nameof(ModelingViewModel.CanAutoLayout): if (_autoLayoutButton != null) _autoLayoutButton.IsEnabled = vm.CanAutoLayout; break;
+                case nameof(ModelingViewModel.TableSpecModel) when vm.TableSpecModel is { } m:
+                    vm.TableSpecModel = null;
+                    OpenWindow(new TableSpecExportWindow(vm.App, m));
+                    break;
             }
         };
         Sync();
@@ -94,6 +101,7 @@ public partial class ModelingView : UserControl
         SyncIssues();
         if (_undoButton != null) _undoButton.IsEnabled = vm.CanUndo;
         if (_compareButton != null) _compareButton.IsEnabled = vm.CanCompare;
+        if (_autoLayoutButton != null) _autoLayoutButton.IsEnabled = vm.CanAutoLayout;
         if (_zoomText != null) _zoomText.Text = vm.ZoomText;
         SyncSelectionEditor();
     }
@@ -184,8 +192,9 @@ public partial class ModelingView : UserControl
             BorderThickness = new Thickness(0), Background = Brushes.Transparent, VerticalContentAlignment = VerticalAlignment.Center,
         };
         _nameBox.OnText(s => { if (!_syncing) vm.SetModelName(s); });
+        ToolTip.SetTip(_nameBox, Tr("모델 이름"));
         _kindBox = new ComboBox { ItemsSource = DataModel.TargetKinds.Select(k => k.Title()).ToList() };
-        ToolTip.SetTip(_kindBox, Tr("SQL 을 뽑을 대상 DB"));
+        ToolTip.SetTip(_kindBox, Tr("대상 DB — SQL 추출 문법과 자주 쓰는 타입 목록에 써요"));
         _kindBox.SelectionChanged += (_, _) =>
         {
             if (!_syncing && _kindBox.SelectedIndex >= 0) vm.SetKind(DataModel.TargetKinds[_kindBox.SelectedIndex]);
@@ -205,31 +214,40 @@ public partial class ModelingView : UserControl
         }
         Border Sep() => new() { Width = 1, Height = 16, Background = ModelUi.Brush("DividerBrush"), Margin = new Thickness(2, 0) };
 
-        _undoButton = ModelUi.IconButton("↶", Tr("되돌리기 (테이블·관계 추가/삭제, 이동)"), vm.Undo);
+        // 버튼마다 무엇을 하는지 말풍선으로 (Mac 1.4.0 도구 막대 정리)
+        _undoButton = ModelUi.IconButton("↶", Tr("되돌리기 — 마지막 구조 변경(테이블·관계 추가/삭제, 이동, 자동 정렬)을 취소해요"), vm.Undo);
+        _autoLayoutButton = ModelUi.IconButton("⊞", Tr("자동 정렬 — 테이블을 관계에 따라 겹치지 않게 다시 배치"), vm.AutoLayout);
+        _autoLayoutButton.IsEnabled = vm.CanAutoLayout;
         var left = Ui.HStack(8, _nameBox, _kindBox, Sep(),
-            ToolButton(ModelTool.SelectTool, "↖", Tr("선택 / 이동")),
-            ToolButton(ModelTool.AddTableTool, "▦⁺", Tr("테이블 추가")),
-            ToolButton(new ModelTool.Relation(ModelCardinality.OneToMany, false), "⑂", Tr("1:N 비식별 관계"), "1:N"),
-            ToolButton(new ModelTool.Relation(ModelCardinality.OneToMany, true), "⑂", Tr("1:N 식별 관계 (자식 PK 에 포함)"), "1:N ●"),
-            ToolButton(new ModelTool.Relation(ModelCardinality.OneToOne, false), "↔", Tr("1:1 관계"), "1:1"),
+            ToolButton(ModelTool.SelectTool, "↖", Tr("선택 / 이동 — 테이블·관계를 눌러 고르고, 카드를 끌어 옮겨요")),
+            ToolButton(ModelTool.AddTableTool, "▦⁺", Tr("테이블 추가 — 이 도구를 고른 뒤 다이어그램 빈 곳을 누르면 새 테이블이 생겨요")),
+            ToolButton(new ModelTool.Relation(ModelCardinality.OneToMany, false), "⑂",
+                       Tr("1:N 비식별 관계 — 부모 테이블, 자식 테이블 순서로 누르면 FK 컬럼이 자식에 생겨요"), "1:N"),
+            ToolButton(new ModelTool.Relation(ModelCardinality.OneToMany, true), "⑂",
+                       Tr("1:N 식별 관계 — 부모 키가 자식의 기본 키에 포함돼요 (부모 → 자식 순서로 누르기)"), "1:N ●"),
+            ToolButton(new ModelTool.Relation(ModelCardinality.OneToOne, false), "↔",
+                       Tr("1:1 관계 — 부모 → 자식 순서로 누르면 유니크 FK 컬럼이 자식에 생겨요"), "1:1"),
             Sep(),
             _undoButton,
-            ModelUi.IconButton("▤", Tr("자동 정렬"), vm.AutoLayout));
+            _autoLayoutButton);
         foreach (var c in left.Children) c.VerticalAlignment = VerticalAlignment.Center;
 
         _issueText = new TextBlock { FontWeight = FontWeight.SemiBold };
         _issueButton = new Button { Content = _issueText, Classes = { "hover" } };
-        ToolTip.SetTip(_issueButton, Tr("모델 검사 (물리명·타입·기본 키)"));
+        ToolTip.SetTip(_issueButton, Tr("모델 검사 — 물리명·타입·기본 키 문제를 보여 줘요. 오류가 있으면 SQL 추출을 막아요"));
         var issueFlyout = new Flyout { Placement = PlacementMode.Bottom };
         issueFlyout.Opening += (_, _) => issueFlyout.Content = IssueList(vm, issueFlyout);
         _issueButton.Flyout = issueFlyout;
-        var png = ModelUi.IconButton("🖼", Tr("PNG 저장"), () => _ = ExportPngAsync());
+        // 이름이 보이는 내보내기 메뉴 (Mac 1.4.0: PNG 버튼 → 모델링 파일 · 테이블 명세서 · PNG)
+        ExportButton = new Button { Content = "📤 " + Tr("내보내기") + " ▾", Classes = { "hover" } };
+        ToolTip.SetTip(ExportButton, Tr("내보내기 — 모델링 파일(.goddbmodel), 테이블 명세서(엑셀), 다이어그램 PNG 로 저장해요"));
+        ExportButton.Flyout = ExportMenu(() => vm.ModelId);
         _compareButton = Ui.Button("⇄ " + Tr("DB와 비교"), () => OpenDialog(m => new ModelCompareWindow(vm.App, m)));
         _compareButton.Classes.Add("hover");
         ToolTip.SetTip(_compareButton, Tr("연결된 DB 와 비교해서 모델에 맞추는 ALTER SQL 을 만들어요 (Synchronize)"));
         var sql = Ui.Button("📄 " + Tr("SQL 추출"), () => OpenDialog(m => new ModelSqlWindow(vm.App, m)), accent: true);
-        ToolTip.SetTip(sql, Tr("CREATE TABLE · FK SQL 로 뽑기 (Forward Engineering)"));
-        var right = Ui.HStack(8, _issueButton, png, _compareButton, sql);
+        ToolTip.SetTip(sql, Tr("SQL 추출 — 모델을 CREATE TABLE · FK SQL 로 뽑아 복사하거나 저장해요"));
+        var right = Ui.HStack(8, _issueButton, ExportButton, _compareButton, sql);
         foreach (var c in right.Children) c.VerticalAlignment = VerticalAlignment.Center;
 
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(12, 8), MinHeight = 32 };
@@ -316,22 +334,56 @@ public partial class ModelingView : UserControl
     {
         if (Vm?.Model is not { } m) return;
         // Mac 시트처럼 지금 모델 값으로 연다
-        var w = make(m.Clone());
+        OpenWindow(make(m.Clone()));
+    }
+
+    /// 마지막으로 연 창 (테스트용)
+    public Window? LastDialog { get; private set; }
+
+    private void OpenWindow(Window w)
+    {
+        LastDialog = w;
         if (TopLevel.GetTopLevel(this) is Window owner) _ = w.ShowDialog(owner);
         else w.Show();
     }
 
-    private async Task ExportPngAsync()
+    /// 내보내기 메뉴 (도구 막대 · 모델 목록 우클릭 공용, Mac ModelListView · ModelEditorView 의 Menu(tr("내보내기")))
+    public MenuFlyout ExportMenu(Func<Guid?> model)
     {
-        if (Vm is not { } vm || vm.Model is not { } m) return;
+        var flyout = new MenuFlyout();
+        foreach (var item in ExportMenuItems(model)) flyout.Items.Add(item);
+        return flyout;
+    }
+
+    public List<Control> ExportMenuItems(Func<Guid?> model)
+    {
+        MenuItem Item(string header, Action<Guid> run)
+        {
+            var m = new MenuItem { Header = header };
+            m.Click += (_, _) => { if (model() is { } id) run(id); };
+            return m;
+        }
+        return
+        [
+            Item(Tr("모델링 파일 저장하기…"), id => { if (Vm != null) _ = Vm.ExportAsync(id); }),
+            Item(Tr("테이블 명세서로 저장하기…"), id => Vm?.ExportTableSpec(id)),
+            new Separator(),
+            Item(Tr("다이어그램 PNG 저장하기…"), id => _ = ExportPngAsync(id)),
+        ];
+    }
+
+    /// 다이어그램을 PNG 로 저장 (도구 막대 · 모델 목록 우클릭 공용). 이름 표시는 화면 설정을 따른다 (Mac ModelEditorView.exportPNG)
+    public async Task ExportPngAsync(Guid id)
+    {
+        if (Vm is not { } vm || vm.Workspace.Find(id) is not { } m) return;
         byte[] png;
-        try { png = ModelCanvas.RenderPng(m, vm.NameMode, ModelUi.Brush("PanelBackground")); }
+        try { png = ModelCanvas.RenderPng(m, ModelingViewModel.LoadNameMode(), ModelUi.Brush("PanelBackground")); }
         catch (Exception e)
         {
-            vm.App.LogError(e, LogSource.Schema, Tr("PNG 저장"));
+            vm.App.LogError(e, LogSource.Schema, Tr("다이어그램 PNG 저장하기…"));
             return;
         }
-        await vm.SavePngAsync(png);
+        await vm.SavePngAsync(png, m);
     }
 
     // MARK: - 목록 (XAML 이벤트)
@@ -344,7 +396,12 @@ public partial class ModelingView : UserControl
 
     private void OnRename(object? sender, RoutedEventArgs e) { if (RowOf(sender) is { } r) Vm?.StartRename(r); }
     private void OnDuplicate(object? sender, RoutedEventArgs e) { if (RowOf(sender) is { } r) Vm?.Duplicate(r.Id); }
-    private void OnExport(object? sender, RoutedEventArgs e) { if (RowOf(sender) is { } r && Vm != null) _ = Vm.ExportAsync(r.Id); }
+    /// 모델 목록 우클릭 > 내보내기 하위 메뉴를 채운다
+    private void OnExportMenuAttached(object? sender, Avalonia.LogicalTree.LogicalTreeAttachmentEventArgs e)
+    {
+        if (sender is not MenuItem menu || menu.Items.Count > 0) return;
+        foreach (var item in ExportMenuItems(() => RowOf(menu)?.Id)) menu.Items.Add(item);
+    }
     private void OnDelete(object? sender, RoutedEventArgs e) { if (RowOf(sender) is { } r && Vm != null) _ = Vm.DeleteAsync(r.Id); }
 
     private void OnRenameKey(object? sender, KeyEventArgs e)

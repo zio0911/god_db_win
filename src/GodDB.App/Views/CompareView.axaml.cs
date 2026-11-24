@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Data.Converters;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using GodDB.App.Controls;
@@ -32,9 +34,52 @@ public partial class CompareView : UserControl
             {
                 Vm = new CompareViewModel(app);
                 Root.DataContext = Vm;
+                Vm.SelectionReset += SyncGridSelection;
+                Vm.PropertyChanged += (_, e) =>
+                {
+                    // 목록이 바뀌면(대상에만 있는 항목 켜기 · 끄기, 새 비교) 표의 고른 것을 다시 맞춘다
+                    if (e.PropertyName == nameof(CompareViewModel.Visible)) Avalonia.Threading.Dispatcher.UIThread.Post(SyncGridSelection);
+                };
             }
         };
+        Items.SelectionChanged += (_, _) =>
+        {
+            if (_syncing || Vm == null) return;
+            Vm.SetSelection(Items.SelectedItems.OfType<SchemaDiffItem>().ToList());
+        };
+        // Mac: 결과 목록을 고르면 ⌘C · ⌘A 가 목록에 간다 → Ctrl+C 는 고른 항목들의 보정 SQL, Ctrl+A 는 보이는 항목 모두
+        Items.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (Vm == null || (e.KeyModifiers & ~KeyModifiers.Shift) is not (KeyModifiers.Control or KeyModifiers.Meta)) return;
+            if (e.Key == Key.C)
+            {
+                _ = Vm.CopySelectedCommand.ExecuteAsync(null);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.A)
+            {
+                Vm.SelectAll();
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
     }
+
+    private bool _syncing;
+
+    /// 뷰모델의 고른 것을 표에 맞춘다
+    private void SyncGridSelection()
+    {
+        if (Vm == null) return;
+        _syncing = true;
+        try
+        {
+            Items.SelectedItems.Clear();
+            foreach (var item in Vm.Visible.Where(i => Vm.SelectedIds.Contains(i.Id))) Items.SelectedItems.Add(item);
+        }
+        finally { _syncing = false; }
+    }
+
+    private void OnSelectAll(object? sender, RoutedEventArgs e) => Vm?.SelectAll();
 }
 
 public partial class CompareView

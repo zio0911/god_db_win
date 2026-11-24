@@ -124,7 +124,7 @@ public class AppGuideTests
         - 1. 모델링
         ## 15. 단축키
         | `Ctrl+Enter` | 실행 |
-        ## 27. 모델링 (MySQL Workbench 모델과 비슷)
+        ## 27. 모델링
         - 상단 모드에서 모델링을 고른다. SQL 추출, 리버스 엔지니어링.
         ```
         ## not a heading
@@ -139,7 +139,7 @@ public class AppGuideTests
     public void ParseSkipsTocAndChangelog()
     {
         var g = new AppGuide(Md);
-        Assert.Equal(["15. 단축키", "27. 모델링 (MySQL Workbench 모델과 비슷)", "29. 접속 그룹"], g.Sections.Select(s => s.Title));
+        Assert.Equal(["15. 단축키", "27. 모델링", "29. 접속 그룹"], g.Sections.Select(s => s.Title));
         Assert.Contains("## not a heading", g.Sections[1].Body);
     }
 

@@ -98,7 +98,9 @@ public sealed partial class CompareViewModel : ObservableObject
     private void CompareStateChanged()
     {
         OnPropertyChanged(nameof(CanCompare));
+        OnPropertyChanged(nameof(CanRetry));
         CompareCommand.NotifyCanExecuteChanged();
+        RetryCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnReportChanged(SchemaDiffReport? value)
@@ -122,10 +124,63 @@ public sealed partial class CompareViewModel : ObservableObject
         OnPropertyChanged(nameof(Visible));
         OnPropertyChanged(nameof(NoDifferences));
         OnPropertyChanged(nameof(HasItems));
-        if (Selection != null && !Visible.Contains(Selection)) Selection = null;
+        // 숨긴 항목은 고른 것에서 뺀다
+        var visible = Visible.Select(i => i.Id).ToHashSet();
+        if (_selectedIds.RemoveWhere(id => !visible.Contains(id)) > 0) SelectionUpdated(fromView: false);
     }
 
-    partial void OnSelectionChanged(SchemaDiffItem? value) => OnPropertyChanged(nameof(SelectedSql));
+    // MARK: - 고르기 (Mac: Set<SchemaDiffItem.ID> — ⌘ · ⇧ 클릭으로 여러 개, ⌘A 모두)
+
+    private readonly HashSet<string> _selectedIds = [];
+    private bool _settingSelection;
+
+    /// 고른 항목들의 Id
+    public IReadOnlySet<string> SelectedIds => _selectedIds;
+    public int SelectionCount => _selectedIds.Count;
+
+    /// 화면(표)의 고른 것을 바꿔야 할 때 (모두 선택 · 비교 다시 하기 등 화면 밖에서 바뀜)
+    public event Action? SelectionReset;
+
+    /// 표에서 고른 항목들 (화면이 부른다)
+    public void SetSelection(IEnumerable<SchemaDiffItem> items)
+    {
+        _selectedIds.Clear();
+        foreach (var i in items) _selectedIds.Add(i.Id);
+        SelectionUpdated(fromView: true);
+    }
+
+    /// Ctrl+A · 우클릭 '모두 선택': 보이는 항목 모두
+    public void SelectAll() => SetIds(Visible.Select(i => i.Id));
+
+    private void SetIds(IEnumerable<string> ids)
+    {
+        _selectedIds.Clear();
+        foreach (var id in ids) _selectedIds.Add(id);
+        SelectionUpdated(fromView: false);
+    }
+
+    /// 하나만 고르기 (기존 단일 선택 호출부 · 테스트). 고른 것이 여러 개면 목록 순서로 첫 항목.
+    partial void OnSelectionChanged(SchemaDiffItem? value)
+    {
+        if (_settingSelection) return;
+        SetIds(value == null ? [] : [value.Id]);
+    }
+
+    private void SelectionUpdated(bool fromView)
+    {
+        _settingSelection = true;
+        Selection = Visible.FirstOrDefault(i => _selectedIds.Contains(i.Id));
+        _settingSelection = false;
+        OnPropertyChanged(nameof(SelectedIds));
+        OnPropertyChanged(nameof(SelectionCount));
+        OnPropertyChanged(nameof(SelectedSql));
+        OnPropertyChanged(nameof(SqlHeader));
+        OnPropertyChanged(nameof(CopySelectedLabel));
+        OnPropertyChanged(nameof(ContextCopyLabel));
+        OnPropertyChanged(nameof(HasSelectedSql));
+        CopySelectedCommand.NotifyCanExecuteChanged();
+        if (!fromView) SelectionReset?.Invoke();
+    }
 
     // MARK: - 표시
 
@@ -146,9 +201,25 @@ public sealed partial class CompareViewModel : ObservableObject
     public string MissingText => Tr("누락 %@", Report?.MissingCount ?? 0);
     public string ExtraText => Tr("대상에만 있는 항목 %@", Report?.ExtraCount ?? 0);
 
+    /// 고른 항목들의 보정 SQL (목록 순서, 테이블마다 "-- 테이블" 머리줄). 참고용만 골랐으면 빈 문자열
+    public string JoinedSql => SchemaDiffReport.FixSql(Visible, _selectedIds);
+    public bool HasSelectedSql => JoinedSql.Length > 0;
+
     /// 오른쪽 보정 SQL 칸
-    public string SelectedSql => Selection?.FixSql
-        ?? (Selection == null ? Tr("왼쪽에서 항목을 선택하세요.") : Tr("-- 참고용 항목이라 SQL을 만들지 않아요."));
+    public string SelectedSql
+    {
+        get
+        {
+            var joined = JoinedSql;
+            return joined.Length > 0 ? joined
+                : _selectedIds.Count == 0 ? Tr("왼쪽에서 항목을 선택하세요.") : Tr("-- 참고용 항목이라 SQL을 만들지 않아요.");
+        }
+    }
+
+    public string SqlHeader => _selectedIds.Count > 1 ? Tr("보정 SQL · %@개 선택", _selectedIds.Count) : Tr("보정 SQL");
+    public string CopySelectedLabel => _selectedIds.Count > 1 ? Tr("선택한 %@개 SQL 복사", _selectedIds.Count) : Tr("이 SQL 복사");
+    /// 우클릭 메뉴의 복사 (Mac "복사 (%@개, ⌘C)" → Windows 단축키 표기)
+    public string ContextCopyLabel => _selectedIds.Count > 1 ? Tr("복사 (%@개, Ctrl+C)", _selectedIds.Count) : Tr("복사 (Ctrl+C)");
 
     public static string Icon(SchemaDiffSeverity s) => s switch
     {
@@ -162,8 +233,13 @@ public sealed partial class CompareViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(HasScript))]
     private Task CopyAll() => App.Dialogs.SetClipboardTextAsync(Report?.FixScript ?? "");
 
-    [RelayCommand]
-    private Task CopySelected() => App.Dialogs.SetClipboardTextAsync(SelectedSql);
+    /// 고른 항목들의 보정 SQL 복사 (Ctrl+C · 우클릭 복사 · 아래 버튼)
+    [RelayCommand(CanExecute = nameof(HasSelectedSql))]
+    private Task CopySelected()
+    {
+        var text = JoinedSql;
+        return text.Length == 0 ? Task.CompletedTask : App.Dialogs.SetClipboardTextAsync(text);
+    }
 
     /// 실행하지 않고 새 쿼리 탭에 연다 (검토 후 직접 실행)
     [RelayCommand(CanExecute = nameof(HasScript))]
@@ -174,31 +250,76 @@ public sealed partial class CompareViewModel : ObservableObject
         App.AddTab(Tr("-- 스키마 보정 SQL (실행 전 반드시 검토하세요)\n\n") + r.FixScript);
     }
 
+    private CancellationTokenSource? _cts;
+
+    /// 읽는 중 [취소]
+    [RelayCommand]
+    public void Cancel() => _cts?.Cancel();
+
+    /// 오류 화면의 [다시 시도] (Mac startCompare)
+    public bool CanRetry => Source?.Id != null && Target?.Id != null;
+
+    [RelayCommand(CanExecute = nameof(CanRetry))]
+    private Task Retry() => CompareAsync();
+
+    /// 접속 하나를 연다. 서버가 응답하지 않으면 드라이버의 연결 시간 제한(15초)에 걸려 실패한다.
+    /// [취소]는 바로 돌아온다: MySqlConnector 는 서버 인사말을 기다리는 중에는 취소를 받지 않아(시간 제한까지 기다림)
+    /// 기다림만 끊고, 늦게 열린 연결은 뒤에서 닫는다 (Mac 은 Task 취소로 바로 끝남)
+    private static async Task<(DbSession? Session, Exception? Error)> OpenAsync(ConnectionProfile p, string? password, CancellationToken ct)
+    {
+        var connect = Task.Run(() => DbSession.ConnectAsync(p, password, ct));
+        try { return (await connect.WaitAsync(ct), null); }
+        catch (OperationCanceledException e) when (ct.IsCancellationRequested)
+        {
+            _ = connect.ContinueWith(t => { if (t.IsCompletedSuccessfully) _ = t.Result.CloseAsync(); }, TaskScheduler.Default);
+            return (null, e);
+        }
+        catch (Exception e) { return (null, e); }
+    }
+
     [RelayCommand(CanExecute = nameof(CanCompare))]
     public async Task CompareAsync()
     {
+        if (Running) return;
         if (App.Profiles.FirstOrDefault(p => p.Id == Source?.Id) is not { } s
             || App.Profiles.FirstOrDefault(p => p.Id == Target?.Id) is not { } t) return;
+        using var cts = new CancellationTokenSource();
+        _cts = cts;
+        var ct = cts.Token;
         Running = true;
         Error = null;
         Report = null;
+        SetIds([]);
         DbSession? ss = null, ts = null;
         try
         {
-            var sp = App.Password(s);
-            var tp = App.Password(t);
-            var sTask = Task.Run(() => DbSession.ConnectAsync(s, sp));
-            var tTask = Task.Run(() => DbSession.ConnectAsync(t, tp));
-            try { await Task.WhenAll(sTask, tTask); }
-            catch
+            // 두 접속을 함께 열고, 한쪽만 실패해도 열린 쪽은 닫는다. 어느 쪽이 실패했는지 알려 준다.
+            var sTask = OpenAsync(s, App.Password(s), ct);
+            var tTask = OpenAsync(t, App.Password(t), ct);
+            var (sr, tr) = (await sTask, await tTask);
+            ss = sr.Session;
+            ts = tr.Session;
+            if (ss == null || ts == null)
             {
-                // 한쪽만 열렸으면 닫는다
-                if (sTask.IsCompletedSuccessfully) ss = sTask.Result;
-                if (tTask.IsCompletedSuccessfully) ts = tTask.Result;
-                throw;
+                if (ct.IsCancellationRequested)
+                {
+                    App.Log(LogLevel.Info, LogSource.Compare, Tr("스키마 비교를 취소했어요."));
+                    return;
+                }
+                var messages = new List<string>();
+                if (sr.Error is { } se)
+                {
+                    var context = Tr("기준 접속 %@ 연결 실패", s.Name);
+                    messages.Add(context + "\n" + App.LogError(se, LogSource.Compare, context));
+                }
+                if (tr.Error is { } te)
+                {
+                    var context = Tr("대상 접속 %@ 연결 실패", t.Name);
+                    messages.Add(context + "\n" + App.LogError(te, LogSource.Compare, context));
+                }
+                Error = string.Join("\n\n", messages);
+                return;
             }
-            ss = sTask.Result;
-            ts = tTask.Result;
 
             // PostgreSQL 은 DB 가 아니라 스키마를 비교한다 (기본 public)
             var sdb = SourceDb.Length == 0 ? (s.Kind == DatabaseKind.Postgres ? "public" : s.Database) : SourceDb;
@@ -208,26 +329,15 @@ public sealed partial class CompareViewModel : ObservableObject
                 Error = Tr("비교할 DB 이름을 입력하거나 접속의 기본 DB를 설정해 주세요.");
                 return;
             }
-            var src = ss;
-            var dst = ts;
-            await Task.Run(() => src.UseAsync(sdb));
-            var source = await Task.Run(() => src.LoadSchemaAsync(sdb));
-            var target = await Task.Run(() => dst.LoadSchemaAsync(tdb));
-
-            var targetNames = target.Select(x => x.Name.ToLowerInvariant()).ToHashSet();
-            var creates = new Dictionary<string, string>();
-            foreach (var table in source.Where(x => !targetNames.Contains(x.Name.ToLowerInvariant())))
-                if (await Task.Run(() => src.ShowCreateTableAsync(table.Name)) is { } ddl) creates[table.Name] = ddl;
             // 보정 SQL 은 대상 DB 문법으로 만든다. 종류가 다르면 MySQL 의 SHOW CREATE 결과는 쓰지 않는다.
             if (s.Kind != t.Kind)
-            {
-                creates.Clear();
                 App.Log(LogLevel.Warning, LogSource.Compare,
                         Tr("기준(%@)과 대상(%@) DB 종류가 달라요. 타입 이름 차이로 '다름'이 많이 나올 수 있어요.", s.Kind.Title(), t.Kind.Title()));
-            }
-            var result = SchemaDiff.Compare(source, target, creates, dst.Dialect);
+            var src = ss;
+            var dst = ts;
+            var result = await Task.Run(() => SchemaDiff.CompareAsync(src, sdb, dst, tdb, ct), ct).WaitAsync(ct);
             Report = result;
-            Selection = null;
+            SetIds([]);
             App.Log(LogLevel.Success, LogSource.Compare,
                     Tr("%@/%@ → %@/%@ 비교 완료 · 누락 %@, 다름 %@", s.Name, sdb, t.Name, tdb, result.MissingCount, result.DifferentCount),
                     audit: new AuditRecord(AuditAction.Compare, $"{s.Name}/{sdb} → {t.Name}/{tdb}",
@@ -235,10 +345,16 @@ public sealed partial class CompareViewModel : ObservableObject
         }
         catch (Exception e)
         {
+            if (ct.IsCancellationRequested || e is OperationCanceledException)
+            {
+                App.Log(LogLevel.Info, LogSource.Compare, Tr("스키마 비교를 취소했어요."));
+                return;
+            }
             Error = App.LogError(e, LogSource.Compare, Tr("스키마 비교 실패"));
         }
         finally
         {
+            _cts = null;
             Running = false;
             var a = ss;
             var b = ts;

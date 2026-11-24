@@ -1,4 +1,5 @@
 using GodDB.Core.Dialects;
+using GodDB.Core.Drivers;
 using GodDB.Core.Sql;
 using static GodDB.Core.L10n;
 
@@ -10,6 +11,8 @@ public enum SchemaDiffKind
     MissingTable,
     /// 대상에만 있는 테이블 (참고용)
     ExtraTable,
+    /// 테이블 자체 속성(코멘트)이 다름
+    DifferentTable,
     MissingColumn,
     DifferentColumn,
     /// 대상에만 있는 컬럼 (참고용, 자동 삭제 안 함)
@@ -38,7 +41,7 @@ public sealed record SchemaDiffItem(SchemaDiffKind Kind, string Table, string? O
     public SchemaDiffSeverity Severity => Kind switch
     {
         SchemaDiffKind.MissingTable or SchemaDiffKind.MissingColumn or SchemaDiffKind.MissingIndex => SchemaDiffSeverity.Missing,
-        SchemaDiffKind.DifferentColumn or SchemaDiffKind.DifferentIndex => SchemaDiffSeverity.Different,
+        SchemaDiffKind.DifferentTable or SchemaDiffKind.DifferentColumn or SchemaDiffKind.DifferentIndex => SchemaDiffSeverity.Different,
         _ => SchemaDiffSeverity.Extra,
     };
 }
@@ -50,11 +53,55 @@ public sealed record SchemaDiffReport(IReadOnlyList<SchemaDiffItem> Items, int M
     public int ExtraCount => Items.Count(i => i.Severity == SchemaDiffSeverity.Extra);
 
     /// 실행 가능한 보정 SQL 전체 (DROP TABLE/COLUMN 은 생성하지 않는다)
-    public string FixScript => string.Join("\n\n", Items.Select(i => i.FixSql).OfType<string>());
+    public string FixScript => Grouped(Items);
+
+    /// 고른 항목들의 보정 SQL 을 목록(`items`) 순서대로 테이블별로 묶어 이어 붙인다.
+    /// 고른 순서와 관계없이 목록 순서를 따르고, 참고용(SQL 없음) 항목은 건너뛴다.
+    public static string FixSql(IEnumerable<SchemaDiffItem> items, IReadOnlySet<string> selected) =>
+        Grouped(items.Where(i => selected.Contains(i.Id)));
+
+    /// 테이블마다 "-- 테이블" 한 줄 뒤에 그 테이블의 SQL 을 줄바꿈으로 잇고, 테이블 사이는 빈 줄로 띄운다
+    public static string Grouped(IEnumerable<SchemaDiffItem> items)
+    {
+        var order = new List<string>();
+        var byTable = new Dictionary<string, List<string>>();
+        foreach (var item in items)
+        {
+            if (item.FixSql is not { } sql) continue;
+            if (!byTable.TryGetValue(item.Table, out var list))
+            {
+                order.Add(item.Table);
+                byTable[item.Table] = list = [];
+            }
+            list.Add(sql);
+        }
+        return string.Join("\n\n", order.Select(t => string.Join("\n", new[] { $"-- {t}" }.Concat(byTable[t]))));
+    }
 }
 
 public static class SchemaDiff
 {
+    /// 스키마 비교 창이 쓰는 경로. 두 접속에서 비교할 DB(PostgreSQL 은 스키마)로 옮겨 읽고,
+    /// 대상 DB 문법으로 보정 SQL 을 만든다. 대상 접속도 대상 DB 로 옮겨 두므로 보정 SQL 을 그 접속에서 바로 실행할 수 있다.
+    public static async Task<SchemaDiffReport> CompareAsync(DbSession ss, string sdb, DbSession ts, string tdb,
+                                                            CancellationToken ct = default)
+    {
+        await ss.UseAsync(sdb, ct);
+        // PostgreSQL 은 search_path 에 따라 기본값 표기가 달라진다 (예: nextval('스키마.시퀀스')). 양쪽 모두 비교할 곳으로 옮긴다.
+        await ts.UseAsync(tdb, ct);
+        var source = await ss.LoadSchemaAsync(sdb, ct);
+        var target = await ts.LoadSchemaAsync(tdb, ct);
+        var creates = new Dictionary<string, string>();
+        // 대상에 없는 테이블은 MySQL 이면 기준 DB 의 SHOW CREATE TABLE 을 쓴다. 종류가 다르면 대상 문법으로 만든다.
+        if (ss.Profile.Kind == ts.Profile.Kind)
+        {
+            var targetNames = target.Select(x => x.Name.ToLowerInvariant()).ToHashSet();
+            foreach (var table in source.Where(x => !targetNames.Contains(x.Name.ToLowerInvariant())))
+                if (await ss.ShowCreateTableAsync(table.Name, ct) is { } ddl) creates[table.Name] = ddl;
+        }
+        return Compare(source, target, creates, ts.Dialect);
+    }
+
     /// <param name="createStatements">대상에 없는 테이블의 CREATE 문 (MySQL 은 기준 DB 의 SHOW CREATE TABLE). 없으면 메타데이터로 만든다.</param>
     /// <param name="dialect">보정 SQL 을 만들 대상 DB 의 문법 (기본 MySQL)</param>
     public static SchemaDiffReport Compare(IReadOnlyList<TableMeta> source, IReadOnlyList<TableMeta> target,
@@ -93,6 +140,10 @@ public static class SchemaDiff
         foreach (var c in t.Columns) tCols.TryAdd(c.Name.ToLowerInvariant(), c);
         var sColNames = s.Columns.Select(c => c.Name.ToLowerInvariant()).ToHashSet();
         string Sql(SchemaChange change) => dialect.Render([change], t.Name);
+
+        if (s.Comment != t.Comment)
+            items.Add(new(SchemaDiffKind.DifferentTable, s.Name, null, Tr("테이블 코멘트 변경"),
+                          Sql(new SchemaChange.TableComment(t.Comment, s.Comment))));
 
         string? previous = null;
         foreach (var c in s.Columns.OrderBy(c => c.Position))
