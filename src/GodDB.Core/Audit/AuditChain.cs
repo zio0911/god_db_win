@@ -111,6 +111,8 @@ public static class AuditChain
         string? keyText = null;
         AuditFileStatus status = AuditFileStatus.Ok.Instance;
         int width = AuditRecord.Header.Count + Columns.Count;
+        var seen = new List<string>();
+        var forks = new List<int>();
         AuditFileReport Fail(int line, string reason) =>
             new(fileName, rows.Count - 1, new AuditFileStatus.Broken(line, reason), PublicKey: keyText);
 
@@ -132,14 +134,28 @@ public static class AuditChain
                 key = raw;
                 keyText = parts[2];
             }
+            var forked = false;
             if (h != Hash(prev, line))
-                return Fail(i + 1, i == 1 ? "첫 줄이 바뀌었어요" : "이 줄이 바뀌었거나, 앞 줄이 지워졌거나 끼워 넣어졌어요");
+            {
+                if (i <= 1 || !seen.Any(p => Hash(p, line) == h))
+                    return Fail(i + 1, i == 1 ? "첫 줄이 바뀌었어요" : "이 줄이 바뀌었거나, 앞 줄이 지워졌거나 끼워 넣어졌어요");
+                forked = true;
+            }
             var sigData = FromBase64(sig);
             if (key == null || sigData == null || !SoftwareDeviceSigner.Verify(key, Encoding.UTF8.GetBytes(h), sigData))
                 return Fail(i + 1, "서명이 맞지 않아요 (이 PC 의 기기 키로 쓴 줄이 아니에요)");
+            if (forked) forks.Add(i + 1);
+            seen.Add(prev);
             if (i == 1 && expectedPrevious != null && cols[5] != expectedPrevious)
                 status = new AuditFileStatus.Unlinked($"이전 파일({cols[3]})의 마지막 무결성 값과 달라요 — 이전 파일이 지워졌거나 바뀌었어요");
             prev = h;
+        }
+        if (forks.Count > 0)
+        {
+            var reason = $"{string.Join(", ", forks)}번째 줄: 앱이 동시에 두 개 켜져 같은 파일에 썼어요 (줄 내용 · 서명은 맞아요)";
+            status = status is AuditFileStatus.Unlinked u
+                ? new AuditFileStatus.Unlinked(u.Reason + " / " + reason)
+                : new AuditFileStatus.Unlinked(reason);
         }
         return new AuditFileReport(fileName, rows.Count - 1, status, prev, keyText);
     }

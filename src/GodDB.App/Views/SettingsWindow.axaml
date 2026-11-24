@@ -54,6 +54,18 @@
             </StackPanel>
           </Border>
 
+          <TextBlock Classes="groupTitle" Text="{l:T 히스토리}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 히스토리 보관 기간}"/>
+                <ComboBox x:Name="HistoryKeepDaysBox" Grid.Column="1" ItemsSource="{Binding HistoryKeepDaysLabels}"
+                          SelectedIndex="{Binding HistoryKeepDaysIndex}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding HistoryKeepNote}"/>
+            </StackPanel>
+          </Border>
+
           <TextBlock Classes="groupTitle" Text="{l:T 로그}"/>
           <Border Classes="section">
             <StackPanel Spacing="6">

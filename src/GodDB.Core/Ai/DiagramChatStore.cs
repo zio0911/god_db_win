@@ -1,11 +1,9 @@
 using System.Globalization;
-using System.Runtime.Versioning;
-using System.Security.AccessControl;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GodDB.Core.Platform;
 
 namespace GodDB.Core.Ai;
 
@@ -57,11 +55,16 @@ public sealed class DiagramChatStore
     public string Directory { get; }
     public int KeepDays { get; }
     private readonly Lock _lock = new();
+    private readonly LocalDataCrypto? _crypto;
+    private LocalDataCrypto Crypto => _crypto ?? LocalDataCrypto.Shared;
 
-    public DiagramChatStore(string directory, int keepDays = 90)
+    /// 파일마다 `GDBENC1` 통째 암호화 (질문 · 답에 SQL 이 들어 있으므로). 예전 평문은 처음 읽을 때 옮긴다.
+    /// crypto 를 비우면 <see cref="LocalDataCrypto.Shared"/>.
+    public DiagramChatStore(string directory, int keepDays = 90, LocalDataCrypto? crypto = null)
     {
         Directory = directory;
         KeepDays = keepDays;
+        _crypto = crypto;
     }
 
     /// 다이어그램을 구분하는 값 (접속 id, DB, 테이블 이름들)
@@ -79,7 +82,7 @@ public sealed class DiagramChatStore
     {
         lock (_lock)
         {
-            var all = Read(scope);
+            if (Read(scope) is not { } all) return [];
             var cutoff = (now ?? DateTime.UtcNow).AddDays(-KeepDays);
             var kept = all.Where(c => c.Updated >= cutoff && c.Messages.Count > 0).ToList();
             if (kept.Count != all.Count) Write(scope, kept);
@@ -92,7 +95,7 @@ public sealed class DiagramChatStore
         if (conversation.Messages.Count == 0) return;
         lock (_lock)
         {
-            var all = Read(scope);
+            if (Read(scope) is not { } all) return;
             var i = all.FindIndex(c => c.Id == conversation.Id);
             if (i >= 0) all[i] = conversation; else all.Add(conversation);
             Write(scope, all);
@@ -101,7 +104,11 @@ public sealed class DiagramChatStore
 
     public void Delete(Guid id, string scope)
     {
-        lock (_lock) Write(scope, Read(scope).Where(c => c.Id != id).ToList());
+        lock (_lock)
+        {
+            if (Read(scope) is not { } all) return;
+            Write(scope, all.Where(c => c.Id != id).ToList());
+        }
     }
 
     public void DeleteAll(string scope)
@@ -119,8 +126,10 @@ public sealed class DiagramChatStore
             try { files = System.IO.Directory.GetFiles(Directory, "*.json"); } catch { return; }
             foreach (var f in files)
             {
+                // 예전 평문 파일은 여기서 암호화된다 (ReadDocument 가 옮김)
+                if (Crypto.ReadDocumentData(f) is not { } data) continue;
                 List<DiagramConversation>? list;
-                try { list = JsonSerializer.Deserialize<List<DiagramConversation>>(File.ReadAllText(f), Json); } catch { continue; }
+                try { list = JsonSerializer.Deserialize<List<DiagramConversation>>(data, Json); } catch { continue; }
                 if (list == null) continue;
                 var kept = list.Where(c => c.Updated >= cutoff).ToList();
                 if (kept.Count == 0) { try { File.Delete(f); } catch { } }
@@ -129,14 +138,16 @@ public sealed class DiagramChatStore
         }
     }
 
-    private List<DiagramConversation> Read(string scope)
+    /// 대화 목록. 파일이 없으면 [], 키가 없어 못 읽으면 null (그때는 파일을 건드리지 않는다).
+    private List<DiagramConversation>? Read(string scope)
     {
-        try
+        var r = Crypto.ReadDocument(FilePath(scope));
+        switch (r.Status)
         {
-            var path = FilePath(scope);
-            if (!File.Exists(path)) return [];
-            return JsonSerializer.Deserialize<List<DiagramConversation>>(File.ReadAllText(path), Json) ?? [];
+            case LocalReadStatus.Missing or LocalReadStatus.Damaged: return [];
+            case LocalReadStatus.KeyUnavailable: return null;
         }
+        try { return JsonSerializer.Deserialize<List<DiagramConversation>>(r.Data!, Json) ?? []; }
         catch { return []; }
     }
 
@@ -144,43 +155,18 @@ public sealed class DiagramChatStore
     {
         var path = FilePath(scope);
         if (list.Count == 0) { try { File.Delete(path); } catch { } return; }
-        try { AppPaths.Ensure(Directory); } catch { return; }
         WriteFile(path, list);
     }
 
-    private static void WriteFile(string path, List<DiagramConversation> list)
+    /// 암호화해서 원자적으로 쓴다 (본인만 접근, Mac: 권한 600). 키가 없으면 쓰지 않는다.
+    private void WriteFile(string path, List<DiagramConversation> list)
     {
-        try
-        {
-            var tmp = path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(list, Json));
-            RestrictToUser(tmp);
-            File.Move(tmp, path, overwrite: true);
-        }
-        catch { /* 기록 저장 실패는 대화를 막지 않는다 */ }
+        try { Crypto.WriteDocument(JsonSerializer.SerializeToUtf8Bytes(list, Json), path); }
+        catch (Exception e) { LocalDataCrypto.Warn($"AI chat not saved ({e.Message})"); /* 기록 저장 실패는 대화를 막지 않는다 */ }
     }
 
-    /// 본인만 읽고 쓰기 (Mac: 권한 600). Windows 는 상속을 끊고 현재 사용자에게만 권한을 준다.
-    private static void RestrictToUser(string path)
-    {
-        try
-        {
-            if (OperatingSystem.IsWindows()) RestrictWindows(path);
-            else File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-        catch { }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void RestrictWindows(string path)
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        if (identity.User is not { } user) return;
-        var security = new FileSecurity();
-        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
-        new FileInfo(path).SetAccessControl(security);
-    }
+    /// 테스트용: 예전 평문 파일을 만들 때 쓰는 직렬화
+    internal static byte[] Encode(List<DiagramConversation> list) => JsonSerializer.SerializeToUtf8Bytes(list, Json);
 
     internal static readonly JsonSerializerOptions Json = new()
     {
