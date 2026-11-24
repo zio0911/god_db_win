@@ -299,7 +299,8 @@ public static class SshHostKeys
             try { p.Kill(entireProcessTree: true); } catch { }
             p.WaitForExit(1000);
         }
-        else p.WaitForExit(1000);   // 남은 출력을 잠깐만 더 받는다
+        // 끝났으면 인자 없는 WaitForExit 로 비동기 출력까지 다 받는다 (시간 인자 버전은 출력이 남아 있어도 돌아온다)
+        else p.WaitForExit();
         int status;
         try { status = p.HasExited ? p.ExitCode : -1; } catch { status = -1; }
         lock (o) lock (e) return new RunResult(status, o.ToString(), e.ToString());
