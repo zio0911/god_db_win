@@ -123,7 +123,8 @@ public sealed partial class DiagramAIPanel : Border
     public void Send()
     {
         var q = Input.Text ?? "";
-        if (q.Trim().Length == 0 || Chat.Running) return;
+        // 답하는 중이면 그 답을 멈추고 새 글을 먼저 (Mac 1.4.3 #177)
+        if (q.Trim().Length == 0) return;
         Input.Text = "";
         Ask(q);
         Input.Focus();

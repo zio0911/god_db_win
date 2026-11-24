@@ -60,6 +60,8 @@ public partial class AssistantPanel : UserControl
         ClosePanel.Click += (_, _) => { if (Vm != null) Vm.App.Assistant.Visible = false; };
         IncludeSql.IsCheckedChanged += (_, _) => { if (Vm != null) Vm.App.Assistant.IncludeSql = IncludeSql.IsChecked == true; };
         HintFix.Click += async (_, _) => { if (Vm != null) await Vm.FixOllamaAsync(); };
+        FinderOff.Click += (_, _) => Vm?.StopFinder();
+        FinderBadge.Background = new SolidColorBrush(Color.FromRgb(0xAF, 0x52, 0xDE), 0.12);
         PropertyChanged += (_, e) =>
         {
             // 보일 때: 모델 선택처럼 알림이 없는 범위 변화를 다시 보고, Ollama 상태를 확인한다
@@ -76,6 +78,7 @@ public partial class AssistantPanel : UserControl
         Vm = new AssistantPanelViewModel(app);
         Vm.ChatChanged += DrawTranscript;
         Vm.ContextChanged += DrawContext;
+        Vm.CardsChanged += () => { _drawn = null; DrawTranscript(); };
         Vm.PropertyChanged += (_, e) =>
         {
             switch (e.PropertyName)
@@ -91,6 +94,9 @@ public partial class AssistantPanel : UserControl
                     break;
                 case nameof(AssistantPanelViewModel.Title):
                     ScopeTitle.Text = Vm.Title;
+                    break;
+                case nameof(AssistantPanelViewModel.FinderOn):
+                    UpdateFinder();
                     break;
             }
         };
@@ -108,6 +114,7 @@ public partial class AssistantPanel : UserControl
         IncludeSql.IsVisible = Vm.IsSql;
         IncludeSql.IsChecked = Vm.App.Assistant.IncludeSql;
         DrawChips();
+        UpdateFinder();
         // 범위가 같아도 빠른 질문(모델링 / SQL)은 바뀔 수 있다
         if (Vm.Chat.Messages.Count == 0) { _drawn = null; DrawTranscript(); }
     }
@@ -127,6 +134,20 @@ public partial class AssistantPanel : UserControl
                 Child = new TextBlock { Text = $"{icon}  {text}", FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis },
             });
         }
+    }
+
+    /// 데이터 찾기 모드 표시 · 입력 칸 안내
+    private void UpdateFinder()
+    {
+        if (Vm == null) return;
+        FinderBadge.IsVisible = Vm.FinderOn;
+        InputBox.PlaceholderText = Vm.FinderOn ? Tr("찾을 데이터 (예: 학년 정보)") : Tr("질문을 입력하고 Enter");
+    }
+
+    private void StartFinder()
+    {
+        Vm?.StartFinder();
+        InputBox.Focus();
     }
 
     private void UpdateHint()
@@ -185,6 +206,12 @@ public partial class AssistantPanel : UserControl
     {
         if (Vm == null) return;
         var items = new List<Control>();
+        if (Vm.CanFind)
+        {
+            var find = new MenuItem { Header = Tr("🔎 데이터 위치 찾기") };
+            find.Click += (_, _) => StartFinder();
+            items.Add(find);
+        }
         foreach (var q in Vm.QuickActions)
         {
             var m = new MenuItem { Header = q };
@@ -251,6 +278,20 @@ public partial class AssistantPanel : UserControl
         head.FontWeight = FontWeight.SemiBold;
         head.Margin = new Thickness(0, 4, 0, 0);
         s.Children.Add(head);
+        if (Vm.CanFind)
+        {
+            var find = new Button
+            {
+                Classes = { "hover" },
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Content = new TextBlock { Text = Tr("🔎 데이터 위치 찾기"), FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                IsEnabled = !Vm.Chat.Running,
+                Name = "FindDataButton",
+            };
+            find.Click += (_, _) => StartFinder();
+            s.Children.Add(find);
+        }
         foreach (var q in Vm.QuickActions)
         {
             var b = new Button
@@ -269,6 +310,8 @@ public partial class AssistantPanel : UserControl
 
     private Control Bubble(AiChat.Message m)
     {
+        // AI 데이터 찾기 답은 말풍선 대신 카드
+        if (Vm!.CardOf(m) is { } card) return DataFinderCardView.Build(Vm.App, m.Id, card, Vm.Chat.Running);
         var isUser = m.Role == "user";
         var body = new StackPanel { Spacing = 6 };
         FillBody(body, m);

@@ -124,14 +124,18 @@
         </Panel>
 
         <StackPanel IsVisible="{Binding ShowSchema}">
-          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
+          <Grid x:Name="SchemaHeader" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
             <TextBlock Text="{Binding ContainerTitle}" Classes="secondary" VerticalAlignment="Center"/>
             <ComboBox Grid.Column="1" ItemsSource="{Binding Databases}" SelectedItem="{Binding CurrentDatabase}"
                       HorizontalAlignment="Stretch" MinWidth="50" ToolTip.Tip="{Binding CurrentDatabase}" Padding="6,2"/>
             <TextBlock Grid.Column="2" Text="{Binding CountText}" VerticalAlignment="Center" FontSize="11"
                        Classes="secondary" Classes.accent="{Binding MultipleSelected}"/>
-            <Button Grid.Column="3" Classes="borderless" Content="⛓" Command="{Binding DiagramCommand}" x:Name="DiagramButton"/>
-            <Button Grid.Column="4" Classes="borderless" Content="⟳" Command="{Binding RefreshSchemaCommand}"
+            <!-- 테이블 설명 (AI 참고, Mac 1.4.3 #185): 없으면 흐린 빈 말풍선, 있으면 보라색 채운 말풍선 -->
+            <Button Grid.Column="3" Classes="borderless" x:Name="DescriptionsButton" VerticalAlignment="Center">
+              <c:TextBubbleIcon x:Name="DescriptionsIcon"/>
+            </Button>
+            <Button Grid.Column="4" Classes="borderless" Content="⛓" Command="{Binding DiagramCommand}" x:Name="DiagramButton"/>
+            <Button Grid.Column="5" Classes="borderless" Content="⟳" Command="{Binding RefreshSchemaCommand}"
                     ToolTip.Tip="{l:T '스키마 새로고침 (Ctrl+Shift+R)'}"/>
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SchemaLoading}" Margin="4,2">

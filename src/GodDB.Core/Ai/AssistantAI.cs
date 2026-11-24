@@ -12,7 +12,8 @@ namespace GodDB.Core.Ai;
 public sealed record TableStats(string Table, long? Rows, long? DataBytes, long? IndexBytes, string? Engine = null, string? Updated = null);
 
 /// 메인 창 오른쪽 AI 어시스턴트 (로컬 Ollama)
-/// 보내는 것: 테이블 구조·코멘트·인덱스·관계, 테이블 크기 통계, 자동 점검 결과, 편집기의 SQL. 데이터 행은 보내지 않는다.
+/// 보내는 것: 테이블 구조·코멘트·인덱스·관계, 테이블 크기 통계, 자동 점검 결과, 편집기의 SQL, 테이블 설명.
+/// 데이터 행은 보내지 않는다 (데이터 찾기만 후보 컬럼 값 몇 개를 로컬 Ollama 에 — DataFinder).
 public static class AssistantAI
 {
     public const int MaxContextChars = 48_000;
@@ -126,7 +127,9 @@ public static class AssistantAI
     // MARK: 문맥
 
     /// 질문·선택에서 자세히 볼 테이블 고르기: 이름(물리명) 또는 코멘트 첫 줄(논리명)이 질문에 나오면
-    public static List<TableMeta> MentionedTables(string text, IReadOnlyList<TableMeta> tables, int limit = 12)
+    /// aliases: 테이블 설명(#178)의 title · terms (소문자 테이블 이름 → 말)
+    public static List<TableMeta> MentionedTables(string text, IReadOnlyList<TableMeta> tables, int limit = 12,
+                                                  IReadOnlyDictionary<string, List<string>>? aliases = null)
     {
         var lower = text.ToLowerInvariant();
         if (lower.Length == 0) return [];
@@ -145,8 +148,15 @@ public static class AssistantAI
             if (logical.Length >= 2 && logical.Length <= 30)
             {
                 var p = lower.IndexOf(logical.ToLowerInvariant(), StringComparison.Ordinal);
-                if (p >= 0) hits.Add((t, p));
+                if (p >= 0) { hits.Add((t, p)); continue; }
             }
+            if (aliases == null || !aliases.TryGetValue(bare, out var names)) continue;
+            var other = names.Select(a => a.Trim(' ', '\t').ToLowerInvariant())
+                .Where(a => a.Length is >= 2 and <= 30)
+                .Select(a => lower.IndexOf(a, StringComparison.Ordinal))
+                .Where(i => i >= 0)
+                .DefaultIfEmpty(-1).Min();
+            if (other >= 0) hits.Add((t, other));
         }
         return hits.OrderBy(h => h.Pos).Take(limit).Select(h => h.Table).ToList();
     }
@@ -227,10 +237,12 @@ public static class AssistantAI
     public static string SystemPrompt(DatabaseKind kind, bool english) => $"""
         You are GodDB's database assistant, helping a developer working with a {kind.Title()} database.
         You receive metadata only: table structures, comments (business names), keys, indexes, relations, approximate sizes,
-        automatic checks and the SQL in the editor. You never see row data — if the answer needs data, give a SELECT the user can run.
+        automatic checks, the SQL in the editor and table descriptions the team wrote (business meaning, code values, rules).
+        You see only small samples of candidate columns in data-finding mode; otherwise no row data — if the answer needs data,
+        give a SELECT the user can run.
         Rules:
         - Base statements on the given metadata. Do not invent tables or columns; say when something is not in the context.
-        - Use comments to explain business meaning. Mention notable points (missing keys/indexes, nullable FKs, large tables).
+        - Use comments and the team's table descriptions to explain business meaning; prefer code values from the descriptions when writing WHERE conditions. Mention notable points (missing keys/indexes, nullable FKs, large tables).
         - SQL in {kind.Title()} syntax inside ```sql blocks. Never run or recommend DROP/TRUNCATE/DELETE without a WHERE and a warning.
         - You also get a short GodDB manual and the current app state. For questions about GodDB itself (who made it,
           how to use a feature, shortcuts, where settings are) answer from that manual; do not invent menus or features.
@@ -268,9 +280,10 @@ public static class AssistantAI
 
     /// 자세히 볼 테이블: 질문에 나온 것 + 사이드바에서 고른 것 + 지금 탭의 테이블 (+ 편집기 SQL 에 나온 것)
     public static List<TableMeta> Focus(string question, IReadOnlyList<TableMeta> tables, IEnumerable<string> selectedTables,
-                                        string? tabTable = null, string? editorSql = null)
+                                        string? tabTable = null, string? editorSql = null,
+                                        IReadOnlyDictionary<string, List<string>>? aliases = null)
     {
-        var out_ = MentionedTables(question, tables);
+        var out_ = MentionedTables(question, tables, aliases: aliases);
         var names = out_.Select(t => t.Name).ToHashSet();
         var extra = selectedTables.ToList();
         if (tabTable != null) extra.Add(tabTable);

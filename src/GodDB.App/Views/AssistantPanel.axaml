@@ -43,6 +43,14 @@
           <TextBlock x:Name="HintText" Classes="caption" Foreground="{DynamicResource OrangeBrush}" VerticalAlignment="Center"/>
           <Button Grid.Column="1" x:Name="HintFix" Classes="link" FontSize="11"/>
         </Grid>
+        <!-- 🔎 데이터 찾기 모드 표시 (Mac 1.4.0) -->
+        <Border x:Name="FinderBadge" IsVisible="False" HorizontalAlignment="Left" CornerRadius="5" Padding="6,2">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="🔎" FontSize="11" VerticalAlignment="Center"/>
+            <TextBlock Text="{l:T 데이터 찾기}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button x:Name="FinderOff" Classes="borderless" Content="✕" FontSize="10" Padding="2,0" ToolTip.Tip="{l:T 데이터 찾기 끄기}"/>
+          </StackPanel>
+        </Border>
         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
           <Button x:Name="QuickMenu" Classes="hover" Content="⚡" VerticalAlignment="Bottom" ToolTip.Tip="{l:T 자주 쓰는 질문}"/>
           <TextBox Grid.Column="1" x:Name="InputBox" PlaceholderText="{l:T 질문을 입력하고 Enter}" TextWrapping="Wrap" MaxHeight="120"/>
@@ -51,7 +59,7 @@
             <Button x:Name="StopButton" Classes="hover" Content="■" ToolTip.Tip="{l:T 취소}" IsVisible="False"/>
           </Panel>
         </Grid>
-        <TextBlock Classes="caption" FontSize="10" Text="{l:T '구조·코멘트·통계·SQL 만 로컬 Ollama 에 보내요. 데이터 행은 보내지 않아요.'}"/>
+        <TextBlock Classes="caption" FontSize="10" TextWrapping="Wrap" Text="{l:T '구조 · 코멘트 · 통계 · SQL 을 로컬 Ollama 에 보내요. 데이터 찾기에서는 후보 컬럼의 값 몇 개(최대 20개)도 로컬 Ollama 에 보내요. 이 PC 밖으로는 나가지 않아요.'}"/>
       </StackPanel>
     </Border>
 
