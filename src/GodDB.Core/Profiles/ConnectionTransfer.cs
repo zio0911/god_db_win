@@ -222,7 +222,7 @@ public static class ConnectionTransfer
         var saved = savedPasswords.ToString(CultureInfo.InvariantCulture);
         return new LogEntry(LogLevel.Success, LogSource.App,
             Tr("접속 정보 %@개 가져옴 · %@", count, fileName) + (savedPasswords > 0 ? Tr(" · 비밀번호 %@개", saved) : ""),
-            Detail: string.Join("\n", incoming.Select(p => $"{p.Name} ({p.Kind.Title()} {p.Host}:{p.Port})")),
+            Detail: string.Join("\n", incoming.Select(p => $"{p.Name} ({p.TypeTitle} {p.Host}:{p.Port})")),
             Audit: new AuditRecord(AuditAction.Settings,
                 Result: $"접속 정보 {count}개 가져옴" + (savedPasswords > 0 ? $" · 비밀번호 {saved}개" : ""),
                 Statement: fileName + " · " + string.Join(", ", incoming.Select(p => p.Name))));

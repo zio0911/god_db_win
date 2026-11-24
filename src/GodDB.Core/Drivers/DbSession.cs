@@ -33,7 +33,8 @@ public static class TransactionSql
 public sealed partial class DbSession : IAsyncDisposable
 {
     public ConnectionProfile Profile { get; }
-    public ISqlDialect Dialect { get; }
+    /// 문법. PostgreSQL 접속이 Redshift 로 확인되면 연결 직후 Redshift 용으로 바뀐다 (ConnectAsync 가 돌려주기 전)
+    public ISqlDialect Dialect { get; private set; }
     private SshTunnel? _tunnel;
     private IDbDriver? _driver;
     /// 다시 연결 · 취소용 연결에 쓰는 주소 (터널을 거쳤다면 로컬 주소)
@@ -64,9 +65,14 @@ public sealed partial class DbSession : IAsyncDisposable
         Dialect = ISqlDialect.Of(profile.Kind);
     }
 
-    public static async Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default)
+    /// DB 서버 연결(로그인 · 세션 설정까지)에 기다리는 최대 시간 (초). SSH 터널은 따로 15초.
+    public const double DefaultConnectTimeout = 15;
+    private double _connectTimeout = DefaultConnectTimeout;
+
+    public static async Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default,
+        double timeout = DefaultConnectTimeout)
     {
-        var s = new DbSession(profile);
+        var s = new DbSession(profile) { _connectTimeout = timeout };
         await s.OpenAsync(password, ct);
         return s;
     }
@@ -110,19 +116,63 @@ public sealed partial class DbSession : IAsyncDisposable
         _ => throw new GodDbException(DbErrorKind.NotConnected), // Redis 는 RedisSession 을 쓴다
     };
 
+    /// 드라이버 연결 + 세션 설정. 서버가 응답하지 않으면 끝없이 기다리지 않도록 시간 제한을 둔다 (Mac ConnectDeadline).
     private async Task OpenDriverAsync(DriverEndpoint e, CancellationToken ct)
     {
-        var d = await MakeDriverAsync(Profile.Kind, e, ct);
-        _driver = d;
-        if (Dialect.SessionSetupSql is { } setup) { try { await d.QueryAsync(setup, 0, ct); } catch { } }
-        // 서버 측에서도 변경을 거부하도록 세션을 읽기전용으로 설정
-        if (Profile.ReadOnly && Dialect.ReadOnlySessionSql is { } ro) await d.QueryAsync(ro, 0, ct);
+        // 드라이버 자체 연결 시간 제한은 전체 제한보다 길게 둬서, 시간 초과는 늘 같은 안내(DbConnectTimeoutException)로 끝나게 한다
+        var endpoint = e with { ConnectTimeoutSeconds = Math.Max(e.ConnectTimeoutSeconds, (int)Math.Ceiling(_connectTimeout) + 5) };
+        var kind = Profile.Kind;
+        var dialect = Dialect;
+        var readOnly = Profile.ReadOnly;
+        var opened = await ConnectDeadline.RunAsync(_connectTimeout,
+            token => PrepareDriverAsync(kind, endpoint, dialect, readOnly, token),
+            late: o => o.Driver.DisposeAsync().AsTask(), ct: ct);
+        _driver = opened.Driver;
+        _serverSessionId = opened.SessionId;
+        if (opened.Redshift && !Dialect.IsRedshift()) Dialect = new PostgresDialect(redshift: true);
+    }
+
+    private sealed record OpenedDriver(IDbDriver Driver, int? SessionId, bool Redshift);
+
+    private static async Task<OpenedDriver> PrepareDriverAsync(DatabaseKind kind, DriverEndpoint e, ISqlDialect dialect,
+        bool readOnly, CancellationToken ct)
+    {
+        var d = await MakeDriverAsync(kind, e, ct);
+        var redshift = false;
         try
         {
-            var v = (await d.QueryAsync(Dialect.SessionIdSql, 0, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
-            _serverSessionId = int.TryParse(v, out var id) ? id : null;
+            // PostgreSQL 접속이 실제로는 Amazon Redshift 인지 (version() 에 "Redshift 1.0.x")
+            if (kind == DatabaseKind.Postgres && !dialect.IsRedshift())
+            {
+                try
+                {
+                    var v = (await d.QueryAsync("SELECT version()", 0, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
+                    if (v != null && PostgresDialect.RedshiftVersion(v) != null)
+                    {
+                        redshift = true;
+                        dialect = new PostgresDialect(redshift: true);
+                    }
+                }
+                catch (Exception) when (!ct.IsCancellationRequested) { }
+            }
+            if (dialect.SessionSetupSql is { } setup) { try { await d.QueryAsync(setup, 0, ct); } catch (Exception) when (!ct.IsCancellationRequested) { } }
+            // 서버 측에서도 변경을 거부하도록 세션을 읽기전용으로 설정
+            if (readOnly && dialect.ReadOnlySessionSql is { } ro) await d.QueryAsync(ro, 0, ct);
+            int? sessionId = null;
+            try
+            {
+                var v = (await d.QueryAsync(dialect.SessionIdSql, 0, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
+                sessionId = int.TryParse(v, out var id) ? id : null;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested) { }
+            ct.ThrowIfCancellationRequested();
+            return new OpenedDriver(d, sessionId, redshift || dialect.IsRedshift());
         }
-        catch { _serverSessionId = null; }
+        catch
+        {
+            await d.DisposeAsync();
+            throw;
+        }
     }
 
     /// 실행 중인 쿼리가 있는지
@@ -349,6 +399,12 @@ public sealed partial class DbSession : IAsyncDisposable
     /// 서버 버전 (예: MySQL 8.0.36, PostgreSQL 16.4, SQL Server 16.0.4315.2 Developer Edition)
     public async Task<string> ServerVersionAsync(CancellationToken ct = default)
     {
+        if (Dialect.IsRedshift())
+        {
+            // SHOW server_version 은 슈퍼유저만 → version() 에서 "Redshift 1.0.x"
+            var rv = (await RawAsync("SELECT version()", ct)).Rows.FirstOrDefault()?.FirstOrDefault();
+            return "Amazon " + ((rv == null ? null : PostgresDialect.RedshiftVersion(rv)) ?? "Redshift");
+        }
         var v = (await RawAsync(Dialect.VersionSql, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
         return $"{Profile.Kind.Title()} {v ?? ""}".Trim();
     }

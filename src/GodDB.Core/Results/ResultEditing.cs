@@ -181,7 +181,12 @@ public sealed class PendingEdits : IEquatable<PendingEdits>
     public override int GetHashCode() => Count;
 }
 
-public enum ResultEditingError { NotSingleTable, TableNotFound, NoPrimaryKey, PrimaryKeyNotSelected, ValuesTruncated }
+public enum ResultEditingError
+{
+    NotSingleTable, TableNotFound, NoPrimaryKey, PrimaryKeyNotSelected, ValuesTruncated,
+    /// Redshift: 기본 키가 정보용이라 행을 하나로 고를 수 없다
+    KeysNotEnforced,
+}
 
 /// 결과를 고칠 수 없는 이유. (Swift 의 associated value enum → 종류 + 값)
 public sealed class ResultEditingException(ResultEditingError kind, string? detail = null) : Exception(Describe(kind, detail))
@@ -200,6 +205,8 @@ public sealed class ResultEditingException(ResultEditingError kind, string? deta
             Tr("테이블 %@ 에 기본 키가 없어서 행을 정확히 고를 수 없어요.", detail),
         ResultEditingError.PrimaryKeyNotSelected =>
             Tr("결과에 기본 키 컬럼(%@)이 있어야 고칠 수 있어요. SELECT 에 넣어 주세요.", detail),
+        ResultEditingError.KeysNotEnforced =>
+            Tr("Redshift 는 기본 키를 강제하지 않아 같은 키의 행이 여러 개일 수 있어서, 결과 표에서 고치지 않아요. UPDATE 문으로 수정하세요."),
         _ => Tr("값이 너무 커서 앞부분만 불러온 칸이 있어 이 결과는 표에서 고칠 수 없어요. UPDATE 문으로 수정하세요."),
     };
 }
@@ -258,11 +265,13 @@ public static partial class ResultEditing
 
     /// 결과를 고칠 수 있으면 대상, 못 고치면 이유. 편집과 상관없는 결과(빈 결과, 실행 계획)는 null.
     /// (Mac: ResultEditingUI.swift 의 AppState.editTarget(for:))
-    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables)
+    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables,
+        bool redshift = false)
     {
         if (result is not { Columns.Count: > 0 } || isPlan || result.Sql is not { } sql) return null;
         if (readOnly) return new EditCheck(null, new GodDbException(DbErrorKind.ReadOnlyBlocked));
         if (result.TruncatedCells > 0) return new EditCheck(null, new ResultEditingException(ResultEditingError.ValuesTruncated));
+        if (redshift) return new EditCheck(null, new ResultEditingException(ResultEditingError.KeysNotEnforced));
         try { return new EditCheck(Target(sql, [.. result.Columns.Select(c => c.Name)], tables), null); }
         catch (Exception e) { return new EditCheck(null, e); }
     }

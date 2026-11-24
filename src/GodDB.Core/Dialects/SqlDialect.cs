@@ -105,6 +105,7 @@ public abstract partial class SqlDialect : ISqlDialect
     /// [테이블, 외래키 이름, 컬럼, 참조 테이블, 참조 컬럼, 순서] — 같은 DB/스키마 안의 참조만
     public string ForeignKeysSql(string schema)
     {
+        if (this is PostgresDialect { Redshift: true } rs) return rs.RedshiftForeignKeysSql(schema);
         var s = QuoteString(schema);
         return Kind switch
         {

@@ -3,8 +3,13 @@ using GodDB.Core.Schema;
 namespace GodDB.Core.Dialects;
 
 /// PostgreSQL. 사이드바의 "DB" 선택은 스키마(search_path)를 뜻한다. 접속 DB 는 접속 설정에서 고른다.
-public sealed class PostgresDialect : SqlDialect
+/// Amazon Redshift 도 PostgreSQL 접속으로 붙는다. 연결할 때 `version()` 으로 알아내 `Redshift` 를 켜고,
+/// PostgreSQL 8.0 기반 카탈로그에서 동작하는 메타데이터 조회를 쓴다 (identity · prokind · unnest · LATERAL 없음).
+public sealed partial class PostgresDialect(bool redshift = false) : SqlDialect
 {
+    /// Amazon Redshift 접속
+    public bool Redshift { get; } = redshift;
+
     public override DatabaseKind Kind => DatabaseKind.Postgres;
 
     public override string QuoteIdent(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
@@ -14,20 +19,21 @@ public sealed class PostgresDialect : SqlDialect
     public override string? ReadOnlySessionSql => "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY";
     /// 큰 테이블의 순차 스캔은 기본으로 직전 스캔이 멈춘 곳부터 시작한다 (synchronize_seqscans).
     /// 그러면 ORDER BY 없는 결과를 LIMIT/OFFSET 으로 나눠 받을 때 페이지끼리 행이 겹치거나 빠진다. 항상 처음부터 읽게 한다.
-    public override string? SessionSetupSql => "SET synchronize_seqscans = off";
+    public override string? SessionSetupSql => Redshift ? null : "SET synchronize_seqscans = off";
     public override string SessionIdSql => "SELECT pg_backend_pid()";
     public override string CancelSql(int sessionId) => $"SELECT pg_cancel_backend({sessionId})";
 
-    public override string? AllTablesSql => """
+    public override string? AllTablesSql => Redshift ? RedshiftAllTablesSql : """
         SELECT table_schema, table_name, table_type FROM information_schema.tables
         WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_schema NOT LIKE 'pg_toast%'
         ORDER BY table_schema, table_name LIMIT 20000
         """;
 
-    public override string DatabasesSql => """
+    // Redshift: 사용 권한(USAGE) 없는 스키마는 고르면 search_path 가 비어 "테이블 없음" 이 되므로 빼고 보여준다
+    public override string DatabasesSql => $"""
         SELECT nspname FROM pg_namespace
          WHERE nspname NOT IN ('pg_catalog', 'information_schema')
-           AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp%'
+           AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp%'{(Redshift ? "\n   AND has_schema_privilege(nspname, 'USAGE')" : "")}
          ORDER BY nspname
         """;
 
@@ -43,7 +49,7 @@ public sealed class PostgresDialect : SqlDialect
          ORDER BY c.relname
         """;
 
-    public override string ColumnsSql(string schema) => $"""
+    public override string ColumnsSql(string schema) => Redshift ? RedshiftColumnsSql(schema) : $"""
         SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod),
                CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
                pg_get_expr(d.adbin, d.adrelid),
@@ -61,7 +67,7 @@ public sealed class PostgresDialect : SqlDialect
          ORDER BY c.relname, a.attnum
         """;
 
-    public override string IndexesSql(string schema) => $"""
+    public override string IndexesSql(string schema) => Redshift ? RedshiftPrimaryKeysSql(schema) : $"""
         SELECT t.relname, i.relname, CASE WHEN ix.indisunique THEN '0' ELSE '1' END, a.attname,
                CASE WHEN ix.indisprimary THEN '1' ELSE '0' END,
                CASE WHEN EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid)
@@ -78,6 +84,7 @@ public sealed class PostgresDialect : SqlDialect
 
     public override string RoutinesSql(string schema)
     {
+        if (Redshift) return RedshiftRoutinesSql(schema);
         var s = QuoteString(schema);
         return $"""
             SELECT 'VIEW', c.relname, COALESCE(obj_description(c.oid, 'pg_class'), '')
@@ -105,6 +112,13 @@ public sealed class PostgresDialect : SqlDialect
                 SELECT pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE n.nspname = {s} AND c.relname = {name}
                 """,
+            // Redshift 는 pg_get_functiondef 가 없다 → 본문만.
+            // Mac #175: Swift `case .procedure, .function where redshift` 의 where 가 .function 에만 붙어
+            // PostgreSQL 프로시저도 본문만 나왔다. 여기서는 when 이 두 종류 모두에 걸린다 (괄호).
+            RoutineKind.Procedure or RoutineKind.Function when Redshift => $"""
+                SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = {s} AND p.proname = {name} ORDER BY p.oid LIMIT 1
+                """,
             RoutineKind.Procedure or RoutineKind.Function => $"""
                 SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                  WHERE n.nspname = {s} AND p.proname = {name} ORDER BY p.oid LIMIT 1
@@ -125,6 +139,7 @@ public sealed class PostgresDialect : SqlDialect
 
     public override string CreateTableSql(TableMeta table)
     {
+        if (Redshift) return RedshiftCreateTableSql(table);
         var lines = table.Columns.OrderBy(c => c.Position).Select(c => "  " + ColumnDefinition(c)).ToList();
         if (table.Indexes.FirstOrDefault(i => i.IsPrimary) is IndexMeta pk)
             lines.Add($"  CONSTRAINT {QuoteIdent(pk.Name)} PRIMARY KEY {IndexColumns(pk)}");
