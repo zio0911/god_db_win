@@ -1,6 +1,7 @@
 name: Release
 
-# v1.2.3 태그를 푸시하면: `release` 환경 승인 대기 → 빌드(win-x64) → (선택) 코드 서명
+# v1.2.3 태그를 푸시하거나, Actions 의 "Run workflow"(GitHub 앱 포함)를 main 에서 태그 칸을 비우고 누르면:
+#   `release` 환경 승인 대기 → (수동 실행이면 그 브랜치의 VERSION 으로 v<버전> 태그를 만들어 올림) → 빌드(win-x64) → (선택) 코드 서명
 #   → Velopack 패키지(Setup.exe · 포터블 zip · 업데이트 파일) → GitHub 릴리스
 # 업데이트 서버는 없다. 앱은 GitHub 릴리스의 Velopack 파일을 읽는다.
 # 테스트는 다시 돌리지 않는다 — 태그에 들어간 코드는 PR 에서 이미 CI 를 통과했다.
@@ -10,8 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "다시 만들 태그 (예: v1.0.0)"
-        required: true
+        description: "비워 두면 이 브랜치의 VERSION 으로 v<버전> 태그를 만들어 릴리스. 이미 있는 태그를 다시 만들 때만 입력 (예: v1.0.0)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -30,7 +32,6 @@ jobs:
     environment: release
     timeout-minutes: 60
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
       HAS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
       - uses: actions/checkout@v7
@@ -40,6 +41,38 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      # 태그 정하기: 태그 푸시면 그 태그, 수동 실행에 태그를 넣었으면 그 태그,
+      # 비웠으면 VERSION 으로 v<버전> 태그를 지금 커밋에 만들어 올린다 (GITHUB_TOKEN 으로 올린 태그는 이 워크플로를 다시 띄우지 않음).
+      - name: 태그 정하기
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            T="$GITHUB_REF_NAME"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            T="$INPUT_TAG"
+          else
+            T="v$(tr -d '\r\n' < VERSION)"
+            # 이미 있으면 가리키는 커밋 (주석 태그는 ^{} 가 커밋)
+            existing=$(git ls-remote --tags origin "refs/tags/$T^{}" | cut -f1)
+            [[ -z "$existing" ]] && existing=$(git ls-remote --tags origin "refs/tags/$T" | cut -f1)
+            if [[ -n "$existing" ]]; then
+              if [[ "$existing" != "$GITHUB_SHA" ]]; then
+                echo "::error::$T 태그가 이미 다른 커밋($existing)에 있어요. VERSION 을 올리거나, 그 태그로 다시 만들려면 태그 칸에 $T 를 넣어 실행하세요."
+                exit 1
+              fi
+              echo "$T 태그가 이미 이 커밋에 있어요. 그대로 릴리스합니다."
+            else
+              git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                tag -a "$T" -m "GodDB for Windows ${T#v}" "$GITHUB_SHA"
+              git push origin "refs/tags/$T"
+              echo "$T 태그를 만들었어요 ($GITHUB_SHA)."
+            fi
+          fi
+          echo "TAG=$T" >> "$GITHUB_ENV"
 
       - name: 버전 확인 (태그 = VERSION 파일)
         shell: bash
