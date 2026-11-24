@@ -23,6 +23,8 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
         _username = profile.Username;
         _database = profile.Database;
         _useTls = profile.UseTLS;
+        _tlsVerify = profile.TlsVerify;
+        _tlsPin = string.IsNullOrEmpty(profile.TlsPinSHA256) ? null : profile.TlsPinSHA256;
         _readOnly = profile.ReadOnly;
         _savePassword = profile.SavePassword;
         _redisMode = profile.RedisMode;
@@ -57,6 +59,10 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     [ObservableProperty] private string _username;
     [ObservableProperty] private string _database;
     [ObservableProperty] private bool _useTls;
+    /// TLS 서버 인증서 확인 (F9-3, 기본 켬)
+    [ObservableProperty] private bool _tlsVerify;
+    /// 고정한 인증서 지문 (없으면 null). 연결 테스트에서 신뢰하면 여기에 들어가고 저장할 때 반영된다
+    [ObservableProperty] private string? _tlsPin;
     [ObservableProperty] private bool _readOnly;
     [ObservableProperty] private bool _savePassword;
     [ObservableProperty] private RedisMode _redisMode;
@@ -98,7 +104,31 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     partial void OnReadOnlyChanged(bool value) => NotifyLayout();
     partial void OnEnvironmentChanged(ConnectionEnvironment value) => NotifyLayout();
     partial void OnWindowsAuthChanged(bool value) => NotifyLayout();
+    partial void OnUseTlsChanged(bool value) => NotifyTls();
+    partial void OnTlsVerifyChanged(bool value) => NotifyTls();
+    partial void OnTlsPinChanged(string? value) => NotifyTls();
+    partial void OnUseSshChanged(bool value) => NotifyTls();
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
+
+    private void NotifyTls()
+    {
+        foreach (var n in new[] { nameof(TlsVerifyHelp), nameof(ShowTlsUncheckedWarning), nameof(ShowTlsVerifyHelp), nameof(HasTlsPin) })
+            OnPropertyChanged(n);
+    }
+
+    /// "서버 인증서 확인" 아래 설명 (Mac ConnectionEditorView.tlsVerifyRows)
+    public string TlsVerifyHelp => UseSsh
+        ? Tr("SSH 터널 안쪽은 127.0.0.1 이라 이름은 확인하지 않고, 고정한 인증서가 있으면 지문만 확인해요.")
+        : Tr("시스템 신뢰 저장소로 인증서와 호스트 이름을 확인해요. 사설 인증서면 처음 연결할 때 지문을 보여 주고 고정할지 물어봐요.");
+    public bool ShowTlsVerifyHelp => UseTls && TlsVerify;
+    public bool ShowTlsUncheckedWarning => UseTls && !TlsVerify;
+    public bool HasTlsPin => UseTls && !string.IsNullOrEmpty(TlsPin);
+
+    /// 연결 테스트에서 인증서 · SSH 호스트 키 확인 창이 필요할 때 (창이 띄우고 [신뢰] · [지우기] 를 누르면 true)
+    public Func<SecurityPrompt, Task<bool>>? AskSecurity { get; set; }
+
+    [RelayCommand]
+    private void ClearTlsPin() => TlsPin = null;
     partial void OnHostChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
 
     partial void OnPasswordChanged(string value)
@@ -132,6 +162,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     public string UserTitle => IsRedis ? Tr("ACL 사용자 (선택)") : Tr("사용자");
     public string? UserWatermark => IsRedis ? Tr("비우면 비밀번호만으로 AUTH") : null;
     public bool ShowProductionNote => Environment == ConnectionEnvironment.Production;
+    /// SQL Server 는 세션 읽기전용이 없어 서버에서 강제할 수 없다 (MySQL · PostgreSQL 은 세션 READ ONLY 로 이중 차단, 1.4.0 안내 강화)
     public bool ShowMssqlReadOnlyNote => ReadOnly && IsMssql;
     public string KeyWatermark => Tr(@"%USERPROFILE%\.ssh\bastion.pem (비우면 ssh-agent)");
     public string PasswordReason => Tr("'%@' 접속의 저장된 비밀번호를 보려고 해요", Name);
@@ -181,6 +212,8 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
         Username = Username,
         Database = Database,
         UseTLS = UseTls,
+        TlsVerify = TlsVerify,
+        TlsPinSHA256 = string.IsNullOrEmpty(TlsPin) ? null : TlsPin,
         ReadOnly = ReadOnly,
         SavePassword = SavePassword,
         RedisMode = RedisMode,
@@ -215,6 +248,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task TestAsync()
     {
+        SecurityPrompt? prompt = null;
         Testing = true;
         TestMessage = null;
         var draft = Draft;
@@ -230,6 +264,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
                     if (info.FirstOrDefault()?.Items.FirstOrDefault(p => p.Key == "redis_version")?.Value is { } v) version = $"Redis {v}";
                 }
                 catch { }
+                version += " · " + session.TlsStatus.Text();
                 await session.CloseAsync();
                 TestOk = true;
                 TestMessage = Tr("연결 성공 · %@", version);
@@ -240,6 +275,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
             // 연결은 이미 성공. 버전 조회가 안 되더라도(권한 등) 실패로 보지 않는다.
             string ver;
             try { ver = await Task.Run(() => s.ServerVersionAsync()); } catch { ver = draft.Kind.Title(); }
+            ver += " · " + s.TlsStatus.Text();
             await s.CloseAsync();
             TestOk = true;
             TestMessage = Tr("연결 성공 · %@", ver);
@@ -249,10 +285,21 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
         {
             TestOk = false;
             TestMessage = App.LogError(e, LogSource.Connection, Tr("%@ 연결 테스트 실패", draft.Name));
+            prompt = SecurityPrompt.From(e);
         }
         finally
         {
             Testing = false;
+        }
+        // 인증서 · SSH 호스트 키 확인 창: [신뢰] · [지우기] 면 고정 지문은 편집 중인 값에 넣고(저장할 때 감사 로그), 다시 테스트
+        if (prompt != null && AskSecurity is { } ask && await ask(prompt))
+        {
+            switch (App.ApplySecurityAccept(prompt, draft.Name))
+            {
+                case PinChange.Set set: TlsPin = set.Pin; break;
+                case PinChange.Clear: TlsPin = null; break;
+            }
+            await TestAsync();
         }
     }
 }

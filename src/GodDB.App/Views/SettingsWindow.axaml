@@ -51,6 +51,11 @@
             <StackPanel Spacing="6">
               <CheckBox x:Name="ConfirmDangerousBox" Content="{l:T 위험한 명령 실행 전 확인}" IsChecked="{Binding ConfirmDangerous}"/>
               <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T 'WHERE 없는 DELETE · UPDATE, TRUNCATE, DROP, Redis 의 FLUSHALL · FLUSHDB · KEYS 등을 실행하기 전에 한 번 더 물어봐요. 운영 접속에서 데이터를 바꾸는 확인은 이 설정과 관계없이 항상 떠요.'}"/>
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 운영 접속 자동 끊기}"/>
+                <ComboBox Grid.Column="1" x:Name="ProdIdleBox" ItemsSource="{Binding ProdIdleLabels}" SelectedIndex="{Binding ProdIdleIndex}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '운영 접속을 이 시간 동안 쓰지 않으면 연결을 끊어요. 커밋하지 않은 변경이 있으면 끊지 않고 알려 줘요. 쿼리 탭은 남고, 다시 실행하면 다시 연결해요.'}"/>
             </StackPanel>
           </Border>
 

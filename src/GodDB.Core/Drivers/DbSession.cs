@@ -48,6 +48,12 @@ public sealed partial class DbSession : IAsyncDisposable
     public string Current { get; private set; } = "";
     /// 쿼리 실행 시간 제한 (초, 0 = 없음). 설정 > 일반 > 쿼리
     public int TimeoutSeconds { get; set; }
+    /// 연결의 TLS 상태 (상태창 한 줄 — F9-3)
+    public TlsStatus TlsStatus { get; private set; } = TlsStatus.Off;
+    /// 마지막으로 이 접속을 쓴 시각 (UTC). 쿼리 · 페이지 · 내보내기 · 스키마 읽기 모두 RawAsync 를 거친다 — 운영 접속 자동 끊기에 쓴다
+    public DateTime LastActivity { get; private set; } = DateTime.UtcNow;
+    /// 비밀번호를 그때그때 읽어 오는 곳 (예: 자격 증명 관리자). 있으면 연결한 뒤 세션이 비밀번호를 들고 있지 않는다 (1.4.1)
+    private Func<string?>? _passwordProvider;
 
     // MARK: 트랜잭션 (자동 커밋 / 수동 커밋)
     public bool AutoCommit { get; private set; } = true;
@@ -64,11 +70,25 @@ public sealed partial class DbSession : IAsyncDisposable
         Dialect = ISqlDialect.Of(profile.Kind);
     }
 
-    public static async Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default)
+    public static Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, CancellationToken ct = default) =>
+        ConnectAsync(profile, password, null, ct);
+
+    /// - passwordProvider: 비밀번호를 그때그때 읽어 오는 곳 (예: 자격 증명 관리자).
+    ///   주면 연결한 뒤 세션이 비밀번호를 들고 있지 않고, 취소 · 다시 연결 때마다 여기서 읽는다 (메모리에 덜 남게).
+    public static async Task<DbSession> ConnectAsync(ConnectionProfile profile, string? password, Func<string?>? passwordProvider,
+        CancellationToken ct = default)
     {
-        var s = new DbSession(profile);
+        var s = new DbSession(profile) { _passwordProvider = passwordProvider };
         await s.OpenAsync(password, ct);
         return s;
+    }
+
+    /// 새 연결을 열 때 쓸 주소: 비밀번호를 들고 있지 않으면 읽어 와서 채운다
+    internal DriverEndpoint? LiveEndpoint()
+    {
+        if (_endpoint is not { } e) return null;
+        if (e.Password == null && _passwordProvider is { } provider) e = e with { Password = provider() };
+        return e;
     }
 
     private async Task OpenAsync(string? password, CancellationToken ct)
@@ -93,8 +113,14 @@ public sealed partial class DbSession : IAsyncDisposable
             Database = Profile.Database,
             UseTLS = Profile.UseTLS,
             WindowsAuth = Profile.Kind == DatabaseKind.Mssql && Profile.WindowsAuth,
+            Tls = TlsPolicy.Of(Profile),
         };
-        try { await OpenDriverAsync(_endpoint, ct); }
+        try
+        {
+            await OpenDriverAsync(_endpoint, ct);
+            // 비밀번호를 다시 읽어 올 곳이 있으면 세션은 비밀번호를 들고 있지 않는다
+            if (_passwordProvider != null) _endpoint = _endpoint with { Password = null };
+        }
         catch
         {
             await CloseAsync();
@@ -114,6 +140,7 @@ public sealed partial class DbSession : IAsyncDisposable
     {
         var d = await MakeDriverAsync(Profile.Kind, e, ct);
         _driver = d;
+        TlsStatus = d.TlsStatus;
         if (Dialect.SessionSetupSql is { } setup) { try { await d.QueryAsync(setup, 0, ct); } catch { } }
         // 서버 측에서도 변경을 거부하도록 세션을 읽기전용으로 설정
         if (Profile.ReadOnly && Dialect.ReadOnlySessionSql is { } ro) await d.QueryAsync(ro, 0, ct);
@@ -132,7 +159,7 @@ public sealed partial class DbSession : IAsyncDisposable
     /// 실행 중이던 호출은 GodDbException(Cancelled) 로 끝난다. 실행 중이 아니면 false.
     public async Task<bool> CancelRunningAsync()
     {
-        if (!IsRunning || _endpoint is not { } e || _serverSessionId is not int id) return false;
+        if (!IsRunning || LiveEndpoint() is not { } e || _serverSessionId is not int id) return false;
         _cancelRequested = true;
         await using var other = await MakeDriverAsync(Profile.Kind, e, CancellationToken.None);
         await other.QueryAsync(Dialect.CancelSql(id));
@@ -146,7 +173,7 @@ public sealed partial class DbSession : IAsyncDisposable
         _driver = null;
         InTransaction = false;
         PendingChanges = 0;
-        if (_endpoint is not { } e) return;
+        if (LiveEndpoint() is not { } e) return;
         try
         {
             await OpenDriverAsync(e, CancellationToken.None);
@@ -177,12 +204,12 @@ public sealed partial class DbSession : IAsyncDisposable
     public async Task<QueryResult> ExecuteAsync(string sql, int limit, int page = 0, ResultSort? sort = null,
         bool capCells = true, CancellationToken ct = default)
     {
-        if (Profile.ReadOnly && !SqlText.IsReadOnly(sql)) throw new GodDbException(DbErrorKind.ReadOnlyBlocked);
+        CheckReadOnly(sql);
         await BeginIfNeededAsync(sql, ct);
         var source = (sort is { } s ? Dialect.SortedSql(sql, s) : null) ?? sql;
         var paged = Dialect.PagedSql(source, limit, Math.Max(0, page) * limit);
         var sw = Stopwatch.StartNew();
-        var raw = await RawAsync(paged?.Sql ?? source, ct);
+        var raw = await ReadOnlyGuardedRawAsync(paged?.Sql ?? source, ct);
         var elapsed = sw.Elapsed.TotalSeconds;
         IEnumerable<string?[]> rows = raw.Rows;
         bool hasMore = false;
@@ -215,6 +242,32 @@ public sealed partial class DbSession : IAsyncDisposable
         return result;
     }
 
+    /// 읽기전용 접속이면 문장 전체를 검사해 쓰기 · 상태 변경을 막는다
+    internal void CheckReadOnly(string sql)
+    {
+        if (Profile.ReadOnly && SqlText.ReadOnlyViolationOf(sql, Dialect.Kind) is { } v) throw new GodDbException(v);
+    }
+
+    /// 읽기전용 PostgreSQL: 문장마다 READ ONLY 트랜잭션 안에서 실행하고 끝나면 롤백한다.
+    /// 세션의 READ ONLY 는 set_config · SET 으로 끌 수 있지만, BEGIN READ ONLY 로 연 트랜잭션은 안에서 쓰기로 바꿀 수 없다.
+    /// 롤백하므로 문장 안에서 바꾼 세션 설정(set_config(…, false) 등)도 남지 않는다. 앱 쪽 검사는 그대로 먼저 한다.
+    internal async Task<RawResult> ReadOnlyGuardedRawAsync(string sql, CancellationToken ct = default)
+    {
+        if (!Profile.ReadOnly || Dialect.Kind != DatabaseKind.Postgres || InTransaction) return await RawAsync(sql, ct);
+        await RawAsync("BEGIN READ ONLY", ct);
+        try
+        {
+            var r = await RawAsync(sql, ct);
+            try { await RawAsync("ROLLBACK", CancellationToken.None); } catch { }
+            return r;
+        }
+        catch
+        {
+            try { await RawAsync("ROLLBACK", CancellationToken.None); } catch { }
+            throw;
+        }
+    }
+
     private static readonly HashSet<string> TransactionControl = ["BEGIN", "START", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "SET", "USE"];
     private static readonly HashSet<string> Ddl = ["CREATE", "ALTER", "DROP", "RENAME", "TRUNCATE"];
 
@@ -223,7 +276,7 @@ public sealed partial class DbSession : IAsyncDisposable
     {
         if (AutoCommit || InTransaction) return;
         var kw = SqlText.FirstKeyword(SqlText.StripComments(sql));
-        if (SqlText.IsReadOnly(sql) || TransactionControl.Contains(kw)) return;
+        if (SqlText.IsReadOnly(sql, Dialect.Kind) || TransactionControl.Contains(kw)) return;
         // MySQL 의 DDL 은 어차피 자동 커밋되므로 트랜잭션을 열지 않는다
         if (Dialect.Kind == DatabaseKind.Mysql && Ddl.Contains(kw)) return;
         await RawAsync(Dialect.BeginSql(), ct);
@@ -246,7 +299,7 @@ public sealed partial class DbSession : IAsyncDisposable
                 break;
             default:
                 if (Dialect.Kind == DatabaseKind.Mysql && Ddl.Contains(kw)) { InTransaction = false; PendingChanges = 0; }
-                else if (InTransaction && !SqlText.IsReadOnly(sql)) PendingChanges++;
+                else if (InTransaction && !SqlText.IsReadOnly(sql, Dialect.Kind)) PendingChanges++;
                 break;
         }
     }
@@ -284,19 +337,22 @@ public sealed partial class DbSession : IAsyncDisposable
     /// 쿼리 결과의 전체 행 수 (SELECT 만)
     public async Task<int?> CountAsync(string sql, CancellationToken ct = default)
     {
+        CheckReadOnly(sql);
         if (Dialect.CountSql(sql) is not { } countSql) return null;
-        var v = (await RawAsync(countSql, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
+        var v = (await ReadOnlyGuardedRawAsync(countSql, ct)).Rows.FirstOrDefault()?.FirstOrDefault();
         return int.TryParse(v, out var n) ? n : null;
     }
 
     /// 실행 계획. 트리 형태 텍스트가 있으면 함께 돌려준다.
     public async Task<(QueryResult Result, string? Tree)> ExplainAsync(string sql, CancellationToken ct = default)
     {
+        // 읽기전용: 계획만 보더라도 쓰기 문장 · EXPLAIN ANALYZE 같은 실제 실행은 막는다
+        CheckReadOnly(sql);
         var steps = Dialect.Explain(sql);
         var sw = Stopwatch.StartNew();
         foreach (var s in steps.Before) await RawAsync(s, ct);
         RawResult main;
-        try { main = await RawAsync(steps.Main, ct); }
+        try { main = await ReadOnlyGuardedRawAsync(steps.Main, ct); }
         catch
         {
             foreach (var s in steps.After) { try { await RawAsync(s, ct); } catch { } }
@@ -320,6 +376,7 @@ public sealed partial class DbSession : IAsyncDisposable
         if (_driver is not { IsOpen: true }) throw new GodDbException(DbErrorKind.NotConnected);
         await _gate.WaitAsync(ct);
         Interlocked.Increment(ref _running);
+        LastActivity = DateTime.UtcNow;
         try
         {
             var r = await _driver.QueryAsync(sql, TimeoutSeconds, ct);
@@ -339,6 +396,7 @@ public sealed partial class DbSession : IAsyncDisposable
         }
         finally
         {
+            LastActivity = DateTime.UtcNow;
             Interlocked.Decrement(ref _running);
             _gate.Release();
         }

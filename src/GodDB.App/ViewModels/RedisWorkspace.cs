@@ -567,7 +567,8 @@ public partial class RedisWorkspace : ObservableObject
             try { await Task.Delay(TimeSpan.FromSeconds(AutoRefreshSeconds), ct); }
             catch (OperationCanceledException) { return; }
             if (ct.IsCancellationRequested) return;
-            await RefreshAllAsync(quiet: true);
+            // 자동 새로고침은 사람이 쓴 것이 아니다 (운영 접속 자동 끊기의 마지막 사용 시각을 바꾸지 않음)
+            await RedisSession.RunPassiveAsync(() => RefreshAllAsync(quiet: true));
         }
     }
 

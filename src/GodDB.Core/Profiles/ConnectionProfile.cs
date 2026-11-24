@@ -103,6 +103,11 @@ public sealed record ConnectionProfile
     public ConnectionEnvironment Environment { get; set; } = ConnectionEnvironment.None;
     /// SQL Server Windows 통합 인증 (Windows 판에만 있는 항목. Mac 판은 이 칸을 무시한다)
     public bool WindowsAuth { get; set; }
+    /// TLS 서버 인증서 확인 (F9-3, 기본 켬 — 예전 접속도 켬으로 읽는다)
+    public bool TlsVerify { get; set; } = true;
+    /// 사용자가 신뢰한 서버 인증서(맨 앞, DER)의 SHA-256 "3F:A2:…" (없으면 null)
+    [JsonPropertyName("tlsPinSHA256")]
+    public string? TlsPinSHA256 { get; set; }
 
     /// 비밀번호가 필요한 접속인지 (Windows 인증이면 필요 없음)
     [JsonIgnore]

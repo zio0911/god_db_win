@@ -40,6 +40,23 @@ public class ConnectionTransferTests
         Assert.Equal(ConnectionTransferErrorKind.WrongPassphrase, e.Kind);
     }
 
+    /// 새로 내보내면 60만 회, 1.4.2 까지의 20만 회 파일도 그대로 열림, 터무니없는 횟수는 거절 (#191)
+    [Fact]
+    public void KeyStrengthAndOldFiles()
+    {
+        var data = ConnectionTransfer.Export([a], new Dictionary<Guid, string> { [a.Id] = "pw" }, passphrase: "team-pass");
+        Assert.Equal(600_000, ConnectionTransfer.Parse(data).Passwords?.Rounds);
+
+        var plain = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { [a.Id.ToString().ToUpperInvariant()] = "old-pw" });
+        var old = ConnectionTransfer.Encrypt(plain, "team-pass", rounds: 200_000);
+        Assert.Equal(200_000, old.Rounds);
+        Assert.Equal(plain, ConnectionTransfer.Decrypt(old, "team-pass"));
+
+        var huge = old with { Rounds = 2_000_000_000 };
+        var e = Assert.Throws<ConnectionTransferException>(() => ConnectionTransfer.Decrypt(huge, "team-pass"));
+        Assert.Equal(ConnectionTransferErrorKind.NotGodDBFile, e.Kind);
+    }
+
     [Fact]
     public void PasswordsNeedPassphrase()
     {
@@ -111,7 +128,7 @@ public class ConnectionTransferTests
         var pw = root.GetProperty("passwords");
         Assert.Equal(["data", "kdf", "rounds", "salt"], pw.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("pbkdf2-sha256", pw.GetProperty("kdf").GetString());
-        Assert.Equal(200_000, pw.GetProperty("rounds").GetInt32());
+        Assert.Equal(600_000, pw.GetProperty("rounds").GetInt32());   // 1.4.3 (#191): 60만 회
         Assert.Equal(16, Convert.FromBase64String(pw.GetProperty("salt").GetString()!).Length);
         // 안의 JSON: {"<대문자 UUID>":"pw"} → nonce 12 + 암호문 + tag 16
         var plainLength = Encoding.UTF8.GetByteCount($"{{\"{a.Id.ToString().ToUpperInvariant()}\":\"pw\"}}");

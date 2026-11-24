@@ -25,6 +25,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _language = L10n.Language;
         _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
         _confirmDangerous = RunConfirm.ConfirmDangerous;
+        _prodIdleIndex = Math.Max(0, Array.IndexOf(AppState.ProdIdleChoices, Prefs.Get(AppState.ProdIdleMinutesKey, 30)));
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
         _tuningEnabled = TuningSettings.Enabled;
@@ -70,6 +71,18 @@ public sealed partial class SettingsViewModel : ObservableObject
         App?.Log(value ? LogLevel.Info : LogLevel.Warning, LogSource.App,
                  value ? Tr("위험한 명령 실행 전 확인을 켰어요") : Tr("위험한 명령 실행 전 확인을 껐어요"),
                  audit: new AuditRecord(AuditAction.Settings, "GodDB", value ? "위험한 명령 확인 켬" : "위험한 명령 확인 끔"));
+    }
+
+    /// 안전 > 운영 접속 자동 끊기 (끔 · 10분 · 30분(기본) · 60분, 1.4.0)
+    public IReadOnlyList<string> ProdIdleLabels => [.. AppState.ProdIdleChoices.Select(m => m == 0 ? Tr("끔") : Tr("%@분", m))];
+    [ObservableProperty] private int _prodIdleIndex;
+    partial void OnProdIdleIndexChanged(int value)
+    {
+        if (value < 0 || value >= AppState.ProdIdleChoices.Length) return;
+        var m = AppState.ProdIdleChoices[value];
+        Prefs.Set(AppState.ProdIdleMinutesKey, m);
+        App?.Log(LogLevel.Info, LogSource.App, m == 0 ? Tr("운영 접속 자동 끊기를 껐어요") : Tr("운영 접속 자동 끊기: %@분", m),
+                 audit: new AuditRecord(AuditAction.Settings, "GodDB", m == 0 ? "운영 자동 끊기 끔" : $"운영 자동 끊기 {m}분"));
     }
 
     [ObservableProperty] private bool _logFileEnabled;

@@ -359,10 +359,12 @@ public sealed class QueryTabView : UserControl
         }
         else
         {
+            var profile = _app.Profile(tab.ProfileId);
+            var kind = profile?.Kind ?? DatabaseKind.Mysql;
             confirm = all
-                ? RunConfirm.ForRunAll(Editor.SqlText, tab.Edits.Count, _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production)
+                ? RunConfirm.ForRunAll(Editor.SqlText, tab.Edits.Count, profile?.Environment == ConnectionEnvironment.Production, kind)
                 : RunConfirm.ForRun(Editor.SelectedSql(), Editor.SqlToRun(), tab.Edits.Count,
-                    _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production);
+                    profile?.Environment == ConnectionEnvironment.Production, kind);
         }
         if (confirm == null) return;
         var c = confirm;

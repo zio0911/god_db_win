@@ -17,6 +17,10 @@
     <Style Selector="Grid.row">
       <Setter Property="Margin" Value="0,3"/>
     </Style>
+    <!-- 주의 문구 (Mac .foregroundStyle(.orange)) -->
+    <Style Selector="TextBlock.warning">
+      <Setter Property="Foreground" Value="{DynamicResource OrangeBrush}"/>
+    </Style>
     <Style Selector="TextBlock.sectionTitle">
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Margin" Value="2,12,0,6"/>
@@ -74,8 +78,8 @@
             </Grid>
             <TextBlock Classes="caption" Margin="150,2,0,0" IsVisible="{Binding ShowProductionNote}"
                        Text="{l:T '운영 접속은 사이드바 · 탭에 빨간색으로 표시하고, 데이터를 바꾸는 문장을 실행하기 전에 항상 확인해요.'}"/>
-            <TextBlock Classes="caption" Margin="150,2,0,0" IsVisible="{Binding ShowMssqlReadOnlyNote}"
-                       Text="{l:T 'SQL Server 는 세션 단위 읽기전용 설정이 없어서 앱에서만 막아요. 운영 DB 는 읽기 전용 계정을 쓰는 걸 권장해요.'}"/>
+            <TextBlock Classes="caption warning" Margin="150,2,0,0" IsVisible="{Binding ShowMssqlReadOnlyNote}" x:Name="MssqlReadOnlyNote"
+                       Text="{l:T '⚠ SQL Server 는 앱에서만 막아요(서버에서 강제되지 않음). 운영 DB 는 읽기 권한만 있는 DB 계정을 쓰세요.'}"/>
           </StackPanel>
         </Border>
 
@@ -141,6 +145,22 @@
             <TextBlock Classes="caption" Margin="150,0,0,4" Text="{Binding DatabaseHelp}"
                        IsVisible="{Binding DatabaseHelp, Converter={x:Static ObjectConverters.IsNotNull}}"/>
             <CheckBox Content="{l:T TLS 사용}" IsChecked="{Binding UseTls}" Margin="150,4,0,0"/>
+            <!-- 서버 인증서 확인 · 고정한 인증서 (F9-3) -->
+            <StackPanel IsVisible="{Binding UseTls}" Margin="150,2,0,0" Spacing="2">
+              <CheckBox x:Name="TlsVerifyBox" Content="{l:T 서버 인증서 확인}" IsChecked="{Binding TlsVerify}"/>
+              <TextBlock Classes="caption warning" TextWrapping="Wrap" IsVisible="{Binding ShowTlsUncheckedWarning}"
+                         Text="{l:T '인증서를 확인하지 않으면 중간에서 가로채도 알 수 없어요. 암호화만 해요.'}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding ShowTlsVerifyHelp}" Text="{Binding TlsVerifyHelp}"/>
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,4,0,0" IsVisible="{Binding HasTlsPin}">
+                <TextBlock Text="📌" VerticalAlignment="Top"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Classes="caption" Text="{l:T 고정한 인증서}"/>
+                  <SelectableTextBlock x:Name="TlsPinText" Classes="caption mono" Text="{Binding TlsPin}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Button Grid.Column="2" Content="{l:T 저장된 인증서 지우기}" Command="{Binding ClearTlsPinCommand}"
+                        FontSize="11" Padding="6,2" VerticalAlignment="Top"/>
+              </Grid>
+            </StackPanel>
           </StackPanel>
         </Border>
 

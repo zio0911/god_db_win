@@ -209,8 +209,10 @@ public sealed record RunConfirm
     public int DiscardedEdits { get; init; }
     /// 운영 접속: 데이터를 바꾸는 문장이 있으면 항상 확인
     public bool Production { get; init; }
+    /// 접속의 DB 종류 (읽기전용 · 변경 문 판정 규칙이 DB 마다 다르다 — SQL Server 는 `;` 없이 문장을 이어 쓴다)
+    public DatabaseKind Kind { get; init; } = DatabaseKind.Mysql;
 
-    private List<string> Writes => Statements.Where(s => !SqlText.IsReadOnly(s)).ToList();
+    private List<string> Writes => Statements.Where(s => !SqlText.IsReadOnly(s, Kind)).ToList();
     private bool ProductionWrites => Production && !Explain && Writes.Count > 0;
 
     public bool NeedsConfirm => WholeScript || Dangerous.Count > 0 || DiscardedEdits > 0 || ProductionWrites;
@@ -220,24 +222,26 @@ public sealed record RunConfirm
     public static bool ConfirmDangerous => Prefs.Get(ConfirmDangerousKey, true);
 
     /// 편집기에서 [실행] / Ctrl+Enter: 선택 영역이 있으면 그 안의 문장들, 없으면 커서가 있는 문장 하나 (current)
-    public static RunConfirm? ForRun(string? selected, string? current, int discardedEdits, bool production) =>
-        Make(SqlText.Statements(selected ?? current ?? "").Select(s => s.Sql).ToList(), all: false, discardedEdits, production);
+    public static RunConfirm? ForRun(string? selected, string? current, int discardedEdits, bool production,
+                                     DatabaseKind kind = DatabaseKind.Mysql) =>
+        Make(SqlText.Statements(selected ?? current ?? "").Select(s => s.Sql).ToList(), all: false, discardedEdits, production, kind);
 
     /// [전체 실행] / Ctrl+Alt+Enter: 편집기의 모든 문장을 위에서부터. 변경 문이 섞여 있으면 확인한다.
-    public static RunConfirm? ForRunAll(string text, int discardedEdits, bool production) =>
-        Make(SqlText.Statements(text).Select(s => s.Sql).ToList(), all: true, discardedEdits, production);
+    public static RunConfirm? ForRunAll(string text, int discardedEdits, bool production, DatabaseKind kind = DatabaseKind.Mysql) =>
+        Make(SqlText.Statements(text).Select(s => s.Sql).ToList(), all: true, discardedEdits, production, kind);
 
-    private static RunConfirm? Make(List<string> statements, bool all, int discardedEdits, bool production)
+    private static RunConfirm? Make(List<string> statements, bool all, int discardedEdits, bool production, DatabaseKind kind)
     {
         if (statements.Count == 0) return null;
         return new RunConfirm
         {
             Statements = statements,
-            WholeScript = all && statements.Count > 1 && statements.Any(s => !SqlText.IsReadOnly(s)),
+            WholeScript = all && statements.Count > 1 && statements.Any(s => !SqlText.IsReadOnly(s, kind)),
             // 설정에서 끄면 위험한 명령 확인은 건너뛴다. 운영 접속의 변경 확인 · 전체 실행 확인은 그대로 (Mac #103)
             Dangerous = ConfirmDangerous ? statements.Where(s => SqlText.Danger(s) != null).ToList() : [],
             DiscardedEdits = discardedEdits,
             Production = production,
+            Kind = kind,
         };
     }
 

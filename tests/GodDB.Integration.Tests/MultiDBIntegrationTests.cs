@@ -253,7 +253,7 @@ internal static partial class MultiDBChecks
         await using (var rs = await DbSession.ConnectAsync(ro, pw))
         {
             var blocked = await Assert.ThrowsAsync<GodDbException>(() => rs.ExecuteAsync("DELETE FROM tb_member", limit: 0));
-            Assert.Equal(DbErrorKind.ReadOnlyBlocked, blocked.Kind);
+            Assert.Equal(DbErrorKind.ReadOnlyRejected, blocked.Kind);
             if (kind == DatabaseKind.Postgres)
                 // Mac 은 기본 스키마(public)의 tb_member — 여기서는 테스트 스키마를 직접 적는다
                 await Assert.ThrowsAnyAsync<Exception>(() => rs.RawAsync($"INSERT INTO {c}.tb_member (email) VALUES ('x')"));

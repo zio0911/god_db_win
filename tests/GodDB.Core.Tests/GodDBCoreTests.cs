@@ -28,13 +28,13 @@ public class SqlTextTests
     [Fact]
     public void ReadOnlyGuard()
     {
-        Assert.True(SqlText.IsReadOnly("select * from t"));
-        Assert.True(SqlText.IsReadOnly("/* hi */ SHOW TABLES"));
-        Assert.True(SqlText.IsReadOnly("  explain select 1"));
-        Assert.False(SqlText.IsReadOnly("UPDATE t SET a = 1"));
-        Assert.False(SqlText.IsReadOnly("-- select\nDELETE FROM t"));
-        Assert.False(SqlText.IsReadOnly("SELECT * FROM t INTO OUTFILE '/tmp/x'"));
-        Assert.False(SqlText.IsReadOnly("WITH x AS (SELECT 1) DELETE FROM t"));
+        Assert.True(SqlText.IsReadOnly("select * from t", DatabaseKind.Mysql));
+        Assert.True(SqlText.IsReadOnly("/* hi */ SHOW TABLES", DatabaseKind.Mysql));
+        Assert.True(SqlText.IsReadOnly("  explain select 1", DatabaseKind.Mysql));
+        Assert.False(SqlText.IsReadOnly("UPDATE t SET a = 1", DatabaseKind.Mysql));
+        Assert.False(SqlText.IsReadOnly("-- select\nDELETE FROM t", DatabaseKind.Mysql));
+        Assert.False(SqlText.IsReadOnly("SELECT * FROM t INTO OUTFILE '/tmp/x'", DatabaseKind.Mysql));
+        Assert.False(SqlText.IsReadOnly("WITH x AS (SELECT 1) DELETE FROM t", DatabaseKind.Mysql));
     }
 
     [Fact]

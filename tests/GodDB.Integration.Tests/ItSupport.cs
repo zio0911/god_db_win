@@ -23,6 +23,7 @@ internal static class It
         Username = "root",
         Database = database,
         UseTLS = true,
+        TlsVerify = false,   // 테스트 MySQL 은 자체 서명 인증서 (Mac IntegrationTests.profile 과 같음)
         SavePassword = false,
     };
 
