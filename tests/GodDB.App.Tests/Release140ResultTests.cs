@@ -1,3 +1,4 @@
+using GodDB.App.Infrastructure;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -251,11 +252,11 @@ public class Release140ResultTests
         // 우클릭 메뉴: 참조 따라가기 (값이 NULL 이면 비활성)
         grid.Select([1]);
         Pump();
-        var disabled = OpenMenu(grid).Single(m => m.Header as string == "참조 따라가기 → ui_customers (customer_id)");
+        var disabled = OpenMenu(grid).Single(m => m.Header as string == MenuText.Escape("참조 따라가기 → ui_customers (customer_id)"));
         Assert.False(disabled.IsEnabled);
         grid.Select([0]);
         Pump();
-        var follow = OpenMenu(grid).Single(m => m.Header as string == "참조 따라가기 → ui_customers (customer_id)");
+        var follow = OpenMenu(grid).Single(m => m.Header as string == MenuText.Escape("참조 따라가기 → ui_customers (customer_id)"));
         Assert.True(follow.IsEnabled);
         // 행 상세: 외래 키 칸 이름 옆 ↗
         Assert.True(pane.Detail.IsVisible);
@@ -295,7 +296,7 @@ public class Release140ResultTests
         // 이 행을 참조하는 행 ▸ ui_orders (customer_id)
         var sub = OpenMenu(pane.Grid).Single(m => m.Header as string == "이 행을 참조하는 행");
         var item = sub.Items.OfType<MenuItem>().Single();
-        Assert.Equal("ui_orders (customer_id)", item.Header);
+        Assert.Equal(MenuText.Escape("ui_orders (customer_id)"), item.Header);   // 메뉴 글자의 _ 는 __ 로 (단축키 표시로 사라지지 않게)
         // 행 상세 맨 아래: 참조하는 테이블
         var b = Assert.Single(pane.Detail.ReferencingButtons);
         Assert.Equal("↙ ui_orders (customer_id)", b.Content);
@@ -306,7 +307,7 @@ public class Release140ResultTests
         // 추정 관계: 머리글 흐린 ↗, 메뉴에 · 추정, 행 상세 ↗ 흐리게
         var pane2 = Show(app, view, "SELECT id, member_no FROM tb_point", ["id", "member_no"], [["1", "1002"]], out _);
         Assert.Equal(true, pane2.Grid.HeaderArrow(1));
-        Assert.Contains(OpenMenu(pane2.Grid), m => m.Header as string == "참조 따라가기 → tb_member (member_no) · 추정");
+        Assert.Contains(OpenMenu(pane2.Grid), m => m.Header as string == MenuText.Escape("참조 따라가기 → tb_member (member_no) · 추정"));
         Assert.Equal(0.45, Assert.Single(pane2.Detail.FkButtons).Opacity);
         // 조인 · 집계 결과에는 나오지 않는다
         var pane3 = Show(app, view, "SELECT o.* FROM ui_orders o JOIN ui_customers c ON c.id = o.customer_id",
