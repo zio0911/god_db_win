@@ -23,15 +23,21 @@ public sealed partial class AppState
     public void SaveProfile(ConnectionProfile profile, string? password)
     {
         var i = IndexOfProfile(profile.Id);
+        AuditPinChange(profile.Name, i >= 0 ? Profiles[i].TlsPinSHA256 : null, profile.TlsPinSHA256);
         if (i >= 0) Profiles[i] = profile;
         else Profiles.Add(profile);
         if (profile.SavePassword)
         {
             if (password != null)
             {
-                if (!Secrets.SetPassword(profile.Id, password))
+                if (Secrets.SetPassword(profile.Id, password))
+                    // 보관소에 있으면 메모리에 따로 두지 않는다 (필요할 때마다 자격 증명 관리자에서 읽음, 1.4.1)
+                    SessionPasswords.Remove(profile.Id);
+                else
+                {
                     Log(LogLevel.Warning, LogSource.App, Tr("%@ 비밀번호를 자격 증명 관리자에 저장하지 못했어요. 이번 실행 중에만 기억해요.", profile.Name));
-                SessionPasswords[profile.Id] = password;
+                    SessionPasswords[profile.Id] = password;
+                }
             }
         }
         else
@@ -121,17 +127,18 @@ public sealed partial class AppState
         var p = profile with { SavePassword = save };
         var i = IndexOfProfile(p.Id);
         if (i >= 0) Profiles[i] = p;
-        if (save)
-        {
-            if (!Secrets.SetPassword(p.Id, password))
-                Log(LogLevel.Warning, LogSource.App, Tr("%@ 비밀번호를 자격 증명 관리자에 저장하지 못했어요. 이번 실행 중에만 기억해요.", p.Name));
-        }
+        // 보관소에 저장했으면 메모리에 따로 두지 않는다 (연결 · 다시 연결 때마다 자격 증명 관리자에서 읽음, 1.4.1).
+        // 저장하지 않기로 했거나 저장이 실패했을 때만 이번 실행 중 메모리에 둔다.
+        if (save && Secrets.SetPassword(p.Id, password))
+            SessionPasswords.Remove(p.Id);
         else
         {
-            Secrets.DeletePassword(p.Id);
+            if (save)
+                Log(LogLevel.Warning, LogSource.App, Tr("%@ 비밀번호를 자격 증명 관리자에 저장하지 못했어요. 이번 실행 중에만 기억해요.", p.Name));
+            else
+                Secrets.DeletePassword(p.Id);
+            SessionPasswords[p.Id] = password;
         }
-        // 이번 실행에서는 입력한 값을 그대로 쓴다 (저장/읽기가 실패해도 연결되도록)
-        SessionPasswords[p.Id] = password;
         Persist();
         Fire(() => ConnectAsync(p.Id));
     }
@@ -198,15 +205,20 @@ public sealed partial class AppState
         }
         try
         {
-            var s = await Bg(() => DbSession.ConnectAsync(profile, password));
+            var provider = PasswordProvider(profile);
+            var s = await Bg(() => DbSession.ConnectAsync(profile, password, provider));
+            password = null;
             UpdateConnection(id, c =>
             {
                 c.Session = s;
                 c.State = ViewModels.ConnectionState.Connected;
             });
+            // PostgreSQL 로 저장한 접속이 실제로는 Redshift 면 종류 · 아이콘을 Redshift 로 (또는 그 반대) + 마지막 연결 시각
+            NoteConnected(id, profile.Kind == DatabaseKind.Postgres ? s.Dialect.IsRedshift() : null);
             Log(LogLevel.Success, LogSource.Connection, Tr("%@ 연결됨", profile.Name) + (profile.ReadOnly ? Tr(" (읽기전용)") : "")
                     + (ConnectedCount > 1 ? Tr(" · 열린 접속 %@개", ConnectedCount) : ""),
                 audit: new AuditRecord(AuditAction.Connect, profile.Name, profile.ReadOnly ? "성공 (읽기전용)" : "성공", target + " · " + note));
+            LogTlsStatus(profile.Name, s.TlsStatus);
             try
             {
                 var dbs = await Bg(() => s.DatabasesAsync());
@@ -228,6 +240,8 @@ public sealed partial class AppState
             var message = LogError(e, LogSource.Connection, Tr("%@ 연결 실패", profile.Name),
                                    audit: new AuditRecord(AuditAction.Connect, profile.Name, Statement: target + " · " + note));
             UpdateConnection(id, c => { c.State = ViewModels.ConnectionState.Failed(message); c.Session = null; });
+            // 인증서 · SSH 호스트 키 문제면 확인 창
+            if (PresentSecurityPrompt(e, profile)) return;
             // 비밀번호가 틀렸으면 다시 입력받는다.
             if (ErrorText.IsAuthFailure(e))
             {
@@ -238,7 +252,8 @@ public sealed partial class AppState
     }
 
     /// 접속 하나를 끊는다. 그 접속의 탭은 남겨 두고, 다시 연결하면 이어서 쓸 수 있다.
-    public async Task DisconnectAsync(Guid id, bool force = false)
+    /// - reason · auditResult: 앱이 스스로 끊을 때 (운영 접속 자동 끊기) 상태창 문구와 감사 로그 결과 칸
+    public async Task DisconnectAsync(Guid id, bool force = false, string? reason = null, string auditResult = "")
     {
         // 커밋하지 않은 트랜잭션이 있으면 먼저 묻는다
         if (!force && Connections.TryGetValue(id, out var c) && c.Tx.Open)
@@ -246,12 +261,12 @@ public sealed partial class AppState
             TxPrompt = new TxPrompt(id, TxPromptReason.Disconnect);
             return;
         }
-        if (RedisWorkspaces.ContainsKey(id)) await DisconnectRedisAsync(id);
+        if (RedisWorkspaces.ContainsKey(id)) await DisconnectRedisAsync(id, reason, auditResult);
         if (Connections.TryGetValue(id, out var info) && info.Session is { } session)
         {
             await Bg(() => session.CloseAsync());
-            Log(LogLevel.Info, LogSource.Connection, Tr("%@ 연결 끊음", session.Profile.Name),
-                audit: new AuditRecord(AuditAction.Disconnect, session.Profile.Name));
+            Log(reason == null ? LogLevel.Info : LogLevel.Warning, LogSource.Connection, reason ?? Tr("%@ 연결 끊음", session.Profile.Name),
+                audit: new AuditRecord(AuditAction.Disconnect, session.Profile.Name, auditResult));
         }
         ResetConnection(id);
     }
@@ -348,10 +363,11 @@ public sealed partial class AppState
 
     private static readonly FileFilter JsonFilter = new("JSON", ["*.json"]);
 
-    /// 파일을 골라 읽고 가져오기 창을 연다.
+    /// 파일을 골라 읽고 가져오기 창을 연다. GodDB 파일과 DBeaver(.dbp · data-sources.json) 를 모두 받는다.
     public async Task ChooseImportFileAsync()
     {
-        var files = await Dialogs.OpenFilesAsync(Tr("GodDB 에서 내보낸 접속 정보 파일(.json)을 고르세요."), [JsonFilter]);
+        var files = await Dialogs.OpenFilesAsync(Tr("GodDB 에서 내보낸 접속 정보 파일(.json) 또는 DBeaver 파일(.dbp · data-sources.json)을 고르세요."),
+            [ImportFilter]);
         if (files.Count == 0) return;
         await ImportFileAsync(files[0]);
     }
@@ -361,7 +377,13 @@ public sealed partial class AppState
     {
         try
         {
-            var bundle = ConnectionTransfer.Parse(await File.ReadAllBytesAsync(path));
+            var data = await File.ReadAllBytesAsync(path);
+            if (Path.GetExtension(path).Equals(".dbp", StringComparison.OrdinalIgnoreCase) || DBeaverImport.LooksLikeDBeaver(data))
+            {
+                ImportRequest = DBeaverRequest(path, await Task.Run(() => DBeaverImport.ParseFile(path)));
+                return;
+            }
+            var bundle = ConnectionTransfer.Parse(data);
             ImportRequest = new ImportRequest(Path.GetFileName(path), bundle);
         }
         catch (Exception e)
@@ -396,6 +418,15 @@ public sealed partial class AppState
     /// 고른 접속을 합친다. 비밀번호가 있으면 보관소에 넣는다.
     public void ImportProfiles(IReadOnlyList<ConnectionProfile> incoming, IReadOnlyDictionary<Guid, string> passwords, string fileName)
     {
+        // 같은 ID 인데 서버 · 계정이 바뀐 접속은 예전 비밀번호를 지운다 (새 비밀번호가 함께 오면 아래에서 다시 넣음, #197)
+        foreach (var p in incoming)
+        {
+            if (Profiles.FirstOrDefault(o => o.Id == p.Id) is { } old && !ConnectionTransfer.SavedPasswordStillApplies(old, p))
+            {
+                Secrets.DeletePassword(p.Id);
+                SessionPasswords.Remove(p.Id);
+            }
+        }
         var merged = ConnectionTransfer.Merge(incoming, Profiles);
         Profiles.Clear();
         foreach (var p in merged) Profiles.Add(p);
@@ -458,11 +489,14 @@ public sealed partial class AppState
         var id = profile.Id;
         try
         {
-            var s = await Bg(() => RedisSession.ConnectAsync(profile, password));
+            var provider = PasswordProvider(profile);
+            var s = await Bg(() => RedisSession.ConnectAsync(profile, password, TimeSpan.FromSeconds(10), provider));
+            password = null;
             var ws = RedisWorkspaceFactory(id, s, this);
             await ws.LoadTopologyAsync();
             RedisWorkspaces[id] = ws;
             UpdateConnection(id, c => c.State = ViewModels.ConnectionState.Connected);
+            NoteConnected(id);
             string version = "";
             try
             {
@@ -476,6 +510,7 @@ public sealed partial class AppState
                 detail: ws.Nodes.Count > 1 ? "nodes: " + string.Join(", ", ws.Nodes) : null,
                 audit: new AuditRecord(AuditAction.Connect, profile.Name,
                                        $"성공 · Redis {version}" + topo + (profile.ReadOnly ? " (읽기전용)" : ""), route));
+            LogTlsStatus(profile.Name, s.TlsStatus);
             await ws.LoadDatabasesAsync();
             await ws.ReloadKeysAsync();
         }
@@ -484,6 +519,7 @@ public sealed partial class AppState
             var message = LogError(e, LogSource.Connection, Tr("%@ 연결 실패", profile.Name),
                                    audit: new AuditRecord(AuditAction.Connect, profile.Name, Statement: route));
             UpdateConnection(id, c => c.State = ViewModels.ConnectionState.Failed(message));
+            if (PresentSecurityPrompt(e, profile)) return;
             if (ErrorText.IsAuthFailure(e))
             {
                 SessionPasswords.Remove(id);
@@ -492,13 +528,14 @@ public sealed partial class AppState
         }
     }
 
-    public async Task DisconnectRedisAsync(Guid id)
+    public async Task DisconnectRedisAsync(Guid id, string? reason = null, string auditResult = "")
     {
         if (!RedisWorkspaces.TryGetValue(id, out var ws)) return;
         await ws.CloseAsync();
         await Bg(() => ws.Session.CloseAsync());
         RedisWorkspaces.Remove(id);
         OnPropertyChanged(nameof(SelectedRedis));
-        Log(LogLevel.Info, LogSource.Connection, Tr("%@ 연결 끊음", ws.Name), audit: new AuditRecord(AuditAction.Disconnect, ws.Name));
+        Log(reason == null ? LogLevel.Info : LogLevel.Warning, LogSource.Connection, reason ?? Tr("%@ 연결 끊음", ws.Name),
+            audit: new AuditRecord(AuditAction.Disconnect, ws.Name, auditResult));
     }
 }

@@ -90,7 +90,6 @@ public sealed class QueryTabView : UserControl
     private readonly Button _runAll;
     private readonly Button _cancel;
     private readonly Button _explain;
-    private readonly Button _tune;
     private readonly Button _refreshSource;
     private readonly ComboBox _limit;
     private readonly Border _txDivider = Q.Divider(vertical: true);
@@ -117,12 +116,11 @@ public sealed class QueryTabView : UserControl
         _cancel.Background = Q.Red;
         _cancel.Foreground = Brushes.White;
         _explain = Q.B(Symbol.Plan, Tr("실행 계획"), () => Run(explain: true), Tr("EXPLAIN 으로 실행 계획 보기 (Ctrl+Shift+Enter)"));
-        _tune = Q.B(Symbol.Sparkles, Tr("AI 튜닝"), Tune, null);
-        _tune.Foreground = Q.Purple;
-        ToolTip.SetShowOnDisabled(_tune, true);
         _refreshSource = Q.B(Symbol.Refresh, Tr("생성문 새로고침"), () => { if (_tab is { } t) _app.Fire(() => _app.RefreshSourceAsync(t.Id)); },
             Tr("DB 에서 생성문(정의)을 다시 읽어 편집기 내용을 바꿔요"));
         var history = Q.B(Symbol.History, Tr("히스토리"), () => _app.ShowHistory = true, Tr("실행한 쿼리 다시 찾기 (Ctrl+Y)"));
+        var saved = Q.B(Symbol.Bookmark, Tr("저장 쿼리"), _app.OpenSavedQueries, Tr("저장 쿼리 목록 (Ctrl+Shift+K) · 지금 쿼리 저장은 Ctrl+Alt+S"));
+        SavedQueriesButton = saved;
 
         // 좁아져도 선택한 값(500 등)은 항상 보이게: 이름표만 compact 에서 숨기고 선택 상자는 줄이지 않는다 (Mac minWidth 72)
         _limit = new ComboBox { MinWidth = 72, VerticalAlignment = VerticalAlignment.Center };
@@ -141,7 +139,7 @@ public sealed class QueryTabView : UserControl
         var pageLabel = Q.T(Tr("페이지"));
         pageLabel.Classes.Add("label");
 
-        var left = Q.H(10, _run, _runAll, _cancel, _explain, _tune, _refreshSource, history, Q.H(4, pageLabel, _limit), _txDivider, Tx);
+        var left = Q.H(10, _run, _runAll, _cancel, _explain, _refreshSource, history, saved, Q.H(4, pageLabel, _limit), _txDivider, Tx);
         var hint = Q.T(Tr("Tab 자동완성 · Ctrl+Enter 커서 문장 실행 · Ctrl+Alt+Enter 전체 실행 · Ctrl+Shift+Enter 실행 계획 · Ctrl+/ 주석 · Ctrl+Alt+L 정렬"), "caption");
         hint.Classes.Add("label");
         hint.TextWrapping = TextWrapping.NoWrap;
@@ -180,6 +178,10 @@ public sealed class QueryTabView : UserControl
         Content = _split;
 
         Editor.SqlTextChanged += OnEditorTextChanged;
+        // 편집기 우클릭 > 쿼리 저장… (Mac: goddbSaveQuery 알림)
+        Editor.SaveQueryRequested += _app.OpenSaveQuery;
+        // 저장 쿼리 (Ctrl+Alt+S) 가 선택 영역 · 커서 문장을 읽는다 (Mac: app.activeEditor = controller)
+        _app.ActiveEditorSql = () => Editor.SqlToRun();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         _app.PropertyChanged += OnAppChanged;
         _app.ConnectionChanged += OnConnectionChanged;
@@ -192,6 +194,8 @@ public sealed class QueryTabView : UserControl
     public Button RunAllButton => _runAll;
     public Button RunButton => _run;
     public ComboBox LimitPicker => _limit;
+    /// 도구 막대 저장 쿼리 버튼 (테스트용)
+    public Button SavedQueriesButton { get; }
 
     // MARK: - 탭 바꾸기
 
@@ -217,6 +221,9 @@ public sealed class QueryTabView : UserControl
                 st.Doc.Text = tab.Text;
             }
             Editor.SchemaProvider = () => _app.Connections.TryGetValue(tab.ProfileId, out var c) ? (c.Tables, c.Routines) : ([], []);
+            var tabId = tab.Id;
+            Editor.LintContext = () => _app.LintContext(tabId);
+            Editor.ServerChecker = sql => _app.ServerCheckAsync(sql, tabId);
             Editor.Kind = _app.Profile(tab.ProfileId)?.Kind ?? DatabaseKind.Mysql;
             _pushing = true;
             Editor.Document = st.Doc;
@@ -232,6 +239,15 @@ public sealed class QueryTabView : UserControl
         }
         Results.Bind(tab);
         RefreshToolbar();
+        RunPendingRequest();
+    }
+
+    /// 저장 쿼리 [실행]: 넣은 내용을 평소 실행(Ctrl+Alt+Enter 와 같은 확인)으로 실행 (Mac onChange(of: runAllRequest, initial: true))
+    private void RunPendingRequest()
+    {
+        if (_tab is not { } tab || _app.RunAllRequest != tab.Id) return;
+        _app.RunAllRequest = null;
+        Run(explain: false, all: true);
     }
 
     /// 도구 막대 (테스트용). 접속 환경 · 읽기전용 표시는 Mac 처럼 창 위 막대(ConnectionBadge)에만 있다.
@@ -288,7 +304,8 @@ public sealed class QueryTabView : UserControl
 
     private void OnAppChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(AppState.RowLimit) or nameof(AppState.TuningJob) or nameof(AppState.SelectedTabId)) RefreshToolbar();
+        if (e.PropertyName is nameof(AppState.RowLimit) or nameof(AppState.SelectedTabId)) RefreshToolbar();
+        if (e.PropertyName == nameof(AppState.RunAllRequest)) RunPendingRequest();
     }
 
     private void OnConnectionChanged(Guid id)
@@ -310,10 +327,6 @@ public sealed class QueryTabView : UserControl
         _run.IsVisible = _runAll.IsVisible = !running;
         _cancel.IsVisible = running;
         _explain.IsEnabled = !running && tab != null;
-        _tune.IsVisible = TuningSettings.Enabled;
-        var reason = _app.TuningUnavailableReason;
-        _tune.IsEnabled = !running && reason == null;
-        ToolTip.SetTip(_tune, reason ?? Tr("로컬 Ollama 로 이 쿼리를 튜닝해요 (Ctrl+Alt+T) — 선택 영역 또는 커서가 있는 문장"));
         _refreshSource.IsVisible = tab?.Source != null;
         var index = Array.FindIndex(Limits, l => l.Value == _app.RowLimit);
         if (_limit.SelectedIndex != index) _limit.SelectedIndex = index;
@@ -332,18 +345,11 @@ public sealed class QueryTabView : UserControl
         else if (e.Key == Key.Enter && mods == (KeyModifiers.Control | KeyModifiers.Alt)) { Run(explain: false, all: true); e.Handled = true; }
         else if (e.Key == Key.Enter && mods == (KeyModifiers.Control | KeyModifiers.Shift)) { Run(explain: true); e.Handled = true; }
         else if (mods == KeyModifiers.Control && (e.Key == Key.OemPeriod || e.PhysicalKey == PhysicalKey.Period)) { Cancel(); e.Handled = true; }
-        else if (mods == (KeyModifiers.Control | KeyModifiers.Alt) && (e.Key == Key.T || e.PhysicalKey == PhysicalKey.T) && TuningSettings.Enabled) { Tune(); e.Handled = true; }
     }
 
     private void Cancel()
     {
         if (_tab is { Running: true } t) _app.Fire(() => _app.CancelQueryAsync(t.Id));
-    }
-
-    private void Tune()
-    {
-        if (_tab is not { Running: false } || _app.TuningUnavailableReason != null || Editor.SqlToRun() is not { } sql) return;
-        _app.StartTuning(sql);
     }
 
     /// 실행 버튼 / Ctrl+Enter: 선택 영역이 있으면 그 안의 문장만, 없으면 커서가 있는 문장 하나 (편집기가 강조하는 문장).
@@ -359,10 +365,12 @@ public sealed class QueryTabView : UserControl
         }
         else
         {
+            var profile = _app.Profile(tab.ProfileId);
+            var kind = profile?.Kind ?? DatabaseKind.Mysql;
             confirm = all
-                ? RunConfirm.ForRunAll(Editor.SqlText, tab.Edits.Count, _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production)
+                ? RunConfirm.ForRunAll(Editor.SqlText, tab.Edits.Count, profile?.Environment == ConnectionEnvironment.Production, kind)
                 : RunConfirm.ForRun(Editor.SelectedSql(), Editor.SqlToRun(), tab.Edits.Count,
-                    _app.Profile(tab.ProfileId)?.Environment == ConnectionEnvironment.Production);
+                    profile?.Environment == ConnectionEnvironment.Production, kind);
         }
         if (confirm == null) return;
         var c = confirm;

@@ -23,12 +23,22 @@ public abstract record OllamaStatus
     public IReadOnlyList<OllamaModel> RunningModels => this is Running r ? r.Models : [];
 }
 
+/// Ollama 대화 메시지 한 개 (Mac 판 OllamaClient.Message). 쿼리 튜닝(Tuning.cs)을 빼면서 여기로 옮겼다.
+public sealed record OllamaMessage(string Role, string Content);
+
 public sealed record OllamaModel(string Name, double SizeGB, string ParameterSize)
 {
     public string Id => Name;
 }
 
-public enum OllamaErrorKind { NotRunning, NoModel, Http }
+public enum OllamaErrorKind
+{
+    NotRunning,
+    NoModel,
+    Http,
+    /// 이 PC 밖의 주소 — 구조 · SQL · 샘플 값이 다른 서버로 가므로 요청하지 않는다 (Body = 호스트)
+    RemoteBlocked,
+}
 
 /// Mac 판 OllamaError
 public sealed class OllamaException : Exception
@@ -48,6 +58,7 @@ public sealed class OllamaException : Exception
     {
         OllamaErrorKind.NotRunning => Tr("Ollama 가 실행 중이 아니에요. 설정 > AI 에서 확인해 주세요."),
         OllamaErrorKind.NoModel => Tr("AI 에 쓸 모델을 설정 > AI 에서 골라 주세요."),
+        OllamaErrorKind.RemoteBlocked => Tr("AI 는 이 PC 의 Ollama 만 쓸 수 있어요 (%@ 는 다른 서버예요). 설정 > AI 에서 주소를 localhost 로 바꿔 주세요.", body),
         _ => Tr("Ollama 오류 (HTTP %@): %@", code.ToString(CultureInfo.InvariantCulture), body),
     };
 }
@@ -145,8 +156,16 @@ public sealed class OllamaClient
         return IsInstalled ? new OllamaStatus.InstalledNotRunning() : new OllamaStatus.NotInstalled();
     }
 
+    /// 이 PC 밖이면 요청 전에 막는다 (설정을 거치지 않고 주소가 들어와도)
+    internal void EnsureLocal()
+    {
+        if (!AISettings.IsLocalUrl(BaseUrl.ToString()))
+            throw new OllamaException(OllamaErrorKind.RemoteBlocked, body: BaseUrl.Host.Length > 0 ? BaseUrl.Host : BaseUrl.ToString());
+    }
+
     public async Task<List<OllamaModel>> ModelsAsync(CancellationToken ct = default)
     {
+        EnsureLocal();
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TagsTimeout);
         using var response = await _http.GetAsync(Endpoint("api/tags"), cts.Token);
@@ -177,6 +196,7 @@ public sealed class OllamaClient
     public async IAsyncEnumerable<ChatChunk> ChatAsync(string model, IReadOnlyList<OllamaMessage> messages, double temperature = 0.2,
                                                        [EnumeratorCancellation] CancellationToken ct = default)
     {
+        EnsureLocal();
         using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
         idle.CancelAfter(ChatIdleTimeout);
         var body = JsonSerializer.Serialize(new
@@ -222,6 +242,48 @@ public sealed class OllamaClient
         return sb.ToString();
     }
 
+    /// 모델 확인용 짧은 요청: "Reply with OK" (스트리밍 없이, 최대 256 토큰). 실패하거나 답이 비면 OllamaException 을 던진다.
+    /// 토큰을 너무 적게 받으면 고장 난 모델도 오류 전에 끝나 통과하므로(빈 답) 조금 넉넉히 받고, 빈 답은 실패로 본다.
+    public async Task PingAsync(string model, double timeoutSeconds, CancellationToken ct = default)
+    {
+        EnsureLocal();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        var body = JsonSerializer.Serialize(new
+        {
+            model,
+            messages = new[] { new { role = "user", content = ModelProbe.Prompt } },
+            stream = false,
+            options = new Dictionary<string, double> { ["num_predict"] = ModelProbe.MaxTokens, ["temperature"] = 0 },
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint("api/chat"))
+        {
+            Content = new StringContent(body, Encoding.UTF8, new MediaTypeHeaderValue("application/json")),
+        };
+        using var response = await Guard(() => _http.SendAsync(request, cts.Token), ct);
+        var text = await Guard(() => response.Content.ReadAsStringAsync(cts.Token), ct);
+        if ((int)response.StatusCode != 200) throw new OllamaException(OllamaErrorKind.Http, (int)response.StatusCode, text);
+        string? error = null, content = null, thinking = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String) error = e.GetString();
+                if (root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.Object)
+                {
+                    if (m.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String) content = c.GetString();
+                    if (m.TryGetProperty("thinking", out var t) && t.ValueKind == JsonValueKind.String) thinking = t.GetString();
+                }
+            }
+        }
+        catch (JsonException) { }
+        if (error != null) throw new OllamaException(OllamaErrorKind.Http, 500, error);
+        if (((content ?? "") + (thinking ?? "")).Trim().Length == 0)
+            throw new OllamaException(OllamaErrorKind.Http, 200, Tr("빈 답을 돌려줬어요"));
+    }
+
     internal sealed record Line(string? Content, string? Thinking, bool Done, string? Error);
 
     /// NDJSON 한 줄. 읽을 수 없는 줄은 null (건너뜀)
@@ -264,32 +326,26 @@ public sealed class OllamaClient
     }
 }
 
-/// 쿼리 튜닝 · AI 설정 (Mac UserDefaults 와 같은 키)
+/// AI(Ollama) 설정 창구. 주소 · 모델은 AISettings 와 같은 값을 쓴다 (저장 키는 예전 이름 그대로라 기존 설정 유지).
+/// Mac 1.4.0 은 쿼리 튜닝을 빼고 TuningSettings 를 AISettings 로 바꿨다 — Windows 도 쿼리 튜닝과 켜기/끄기 설정을 뺐다.
 public static class TuningSettings
 {
-    public const string EnabledKey = "GodDB.tuning.enabled";
-    public const string UrlKey = "GodDB.tuning.url";
-    public const string ModelKey = "GodDB.tuning.model";
-    /// AI 어시스턴트는 쿼리 튜닝과 따로 켜고 끈다 (Mac: AppSettings.assistantKey)
+    public const string UrlKey = AISettings.UrlKey;
+    public const string ModelKey = AISettings.ModelKey;
+    /// AI 어시스턴트 켜기 (Mac: AppSettings.assistantKey)
     public const string AssistantEnabledKey = "GodDB.assistant.enabled";
-
-    public static bool Enabled
-    {
-        get => Prefs.Get(EnabledKey, true);
-        set => Prefs.Set(EnabledKey, value);
-    }
 
     public static string Url
     {
-        get => Prefs.GetString(UrlKey) ?? OllamaClient.DefaultUrl;
-        set => Prefs.Set(UrlKey, value);
+        get => AISettings.Url;
+        set => AISettings.Url = value;
     }
 
-    /// 비어 있으면 설치된 첫 모델을 쓴다
+    /// 비어 있으면 AISettings.DefaultModel 로 고른다
     public static string Model
     {
-        get => Prefs.GetString(ModelKey) ?? "";
-        set => Prefs.Set(ModelKey, value);
+        get => AISettings.Model;
+        set => AISettings.Model = value;
     }
 
     public static bool AssistantEnabled
@@ -298,29 +354,23 @@ public static class TuningSettings
         set => Prefs.Set(AssistantEnabledKey, value);
     }
 
-    public static OllamaClient Client =>
-        new(Uri.TryCreate(Url, UriKind.Absolute, out var u) ? u : new Uri(OllamaClient.DefaultUrl));
+    public static OllamaClient Client => AISettings.Client;
 
     /// 이 PC 안의 주소인지 (아니면 스키마 정보가 다른 서버로 간다)
-    public static bool IsLocal => IsLocalUrl(Url);
+    public static bool IsLocal => AISettings.IsLocal;
 
-    public static bool IsLocalUrl(string url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || string.IsNullOrEmpty(u.Host)) return false;
-        return u.Host.ToLowerInvariant() is "localhost" or "127.0.0.1" or "::1" or "[::1]";
-    }
+    public static bool IsLocalUrl(string url) => AISettings.IsLocalUrl(url);
 
-    /// 주소가 이 PC 밖일 때 설정 화면에 보일 경고 (Mac: "이 Mac 밖의 주소예요…")
-    public static string NonLocalWarning => Tr("이 PC 밖의 주소예요. 쿼리와 테이블 구조가 그 서버로 전송돼요.");
+    /// 주소가 이 PC 밖일 때 설정 화면에 보일 경고 (Mac 1.4.0: 다른 서버 주소는 저장하지 않는다)
+    public static string NonLocalWarning => Tr("AI 는 이 PC 의 Ollama 만 쓸 수 있어요. 다른 서버로는 구조 · SQL · 샘플 값이 나가므로 막아 두었어요. 이 주소는 저장되지 않아요.");
 
-    /// 코드·SQL 에 강한 추천 모델
-    public static readonly IReadOnlyList<string> RecommendedModels = ["qwen2.5-coder:14b", "qwen2.5-coder:32b", "qwen3:30b"];
+    public static IReadOnlyList<string> RecommendedModels => AISettings.RecommendedModels;
 
-    /// 쓸 모델: 설정에 고른 모델, 비어 있으면 설치된 첫 모델 (없으면 "")
+    /// 쓸 모델: 설정에 고른 모델, 비어 있으면 설치된 추천 모델 → 설치된 첫 모델 (없으면 "")
     public static string ResolveModel(IReadOnlyList<OllamaModel> installed, string? chosen = null)
     {
         var m = chosen ?? Model;
-        return m.Length == 0 ? installed.FirstOrDefault()?.Name ?? "" : m;
+        return m.Length == 0 ? AISettings.DefaultModel(installed.Select(x => x.Name).ToList()) ?? "" : m;
     }
 
     /// 상태 한 줄 (설정 화면용)

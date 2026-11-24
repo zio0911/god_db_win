@@ -38,6 +38,8 @@ public interface ISqlDialect
     string? ReadOnlySessionSql { get; }
     /// 연결 직후 항상 실행할 세션 설정 (실패해도 접속은 계속)
     string? SessionSetupSql { get; }
+    /// 서버 세션의 실행 시간 제한 (밀리초). 지원하지 않으면 null
+    string? StatementTimeoutSql(int milliseconds);
     /// 이 연결의 서버 쪽 세션 번호 (실행 중인 쿼리 취소에 쓴다)
     string SessionIdSql { get; }
     /// 다른 연결에서 실행해 그 세션의 쿼리를 멈추는 SQL (id 는 숫자만)
@@ -81,8 +83,6 @@ public interface ISqlDialect
     string DropTableSql(string table);
     /// [테이블, 외래키 이름, 컬럼, 참조 테이블, 참조 컬럼, 순서] — 같은 DB/스키마 안의 참조만
     string ForeignKeysSql(string schema);
-    /// 통계상 예상 행 수 (정확한 COUNT 가 아님 — 빠름)
-    string RowEstimateSql(string table, string schema);
 
     // ── 결과 페이징 · 건수 · 정렬 ──
     /// SELECT 를 페이지 단위로 가져오는 SQL. 다음 페이지가 있는지 알기 위해 limit + 1 행을 요청한다.

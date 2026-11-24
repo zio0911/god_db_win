@@ -67,7 +67,7 @@ public sealed class CsvImportWindow : Window
             Ui.HStack(6, new TextBlock { Text = Tr("구분자"), VerticalAlignment = VerticalAlignment.Center }, DelimiterBox),
             HeaderBox, EmptyAsNullBox);
 
-        var previewBorder = TuningSheet.CodeBorder(new ScrollViewer
+        var previewBorder = Ui.CodeBorder(new ScrollViewer
         {
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,

@@ -2,7 +2,7 @@ using GodDB.App.Services;
 
 namespace GodDB.App.ViewModels;
 
-// ER 다이어그램 · 모델링 · 쿼리 튜닝 · AI 어시스턴트 · 시작 화면 · 새로운 기능
+// ER 다이어그램 · 모델링 · AI 어시스턴트 · 시작 화면 · 새로운 기능
 public sealed partial class AppState
 {
     // MARK: - ER 다이어그램
@@ -77,46 +77,6 @@ public sealed partial class AppState
     /// 리버스 엔지니어링은 연결된 SQL DB 가 있어야 한다
     public bool CanReverseEngineer => State.IsConnected && SelectedProfile?.Kind.IsSql() == true && Tables.Count > 0;
 
-    // MARK: - 쿼리 튜닝
-
-    /// 튜닝을 쓸 수 없는 이유 (쓸 수 있으면 null)
-    public string? TuningUnavailableReason => GodDB.Core.Ai.TuningJob.UnavailableReason(SelectedTab != null);
-
-    public void StartTuning(string sql)
-    {
-        if (SelectedTab is not { } tab || GodDB.Core.Ai.TuningJob.Normalize(sql) is not { } trimmed) return;
-        var job = new GodDB.Core.Ai.TuningJob(tab.Id, trimmed, TuningSettings.Model, Profile(tab.ProfileId)?.Name ?? "");
-        TuningJob = job;
-        if (!Connections.TryGetValue(tab.ProfileId, out var info) || info.Session is not { } session)
-        {
-            Fire(() => job.RunAsync(null!, tab.Database, [], hooks: TuningHooks(tab)));
-            return;
-        }
-        var known = info.Tables;
-        var db = tab.Database;
-        var hooks = TuningHooks(tab);
-        Fire(() => job.RunAsync(session, db, known, hooks: hooks));
-    }
-
-    private GodDB.Core.Ai.TuningJob.Hooks TuningHooks(QueryTab tab) => new()
-    {
-        Started = (message, prompt) => RunOnUi(() => Log(LogLevel.Info, LogSource.Query, message, detail: prompt)),
-        Finished = (message, streamed, auditResult) => RunOnUi(() =>
-            Log(LogLevel.Success, LogSource.Query, message, detail: streamed,
-                audit: new AuditRecord(AuditAction.Ai, AuditTarget(tab), auditResult))),
-        Failed = (e, context) =>
-        {
-            string? msg = null;
-            void Do() => msg = LogError(e is NullReferenceException ? new GodDbException(DbErrorKind.NotConnected) : e, LogSource.Query, context,
-                                        audit: new AuditRecord(AuditAction.Ai, AuditTarget(tab), Statement: "쿼리 튜닝"));
-            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) Do();
-            else Avalonia.Threading.Dispatcher.UIThread.Invoke(Do);
-            return msg ?? e.Message;
-        },
-    };
-
-    public void CancelTuning() => TuningJob?.Cancel();
-
     // MARK: - AI 어시스턴트
 
     /// 지금 화면의 대화 범위
@@ -130,10 +90,12 @@ public sealed partial class AppState
                                SelectedProfile?.Kind == DatabaseKind.Redis, CurrentDatabase);
 
     /// 자세히 볼 테이블: 질문에 나온 것 + 사이드바에서 고른 것 + 지금 탭의 테이블
+    /// 테이블 설명(#178)이 있으면 빈 코멘트에 title, 질문 속 title · terms 로도 찾는다
     public List<TableMeta> AssistantFocus(string question) =>
-        AssistantAI.Focus(question, Tables, SelectedTables,
+        AssistantAI.Focus(question, DescribedTables, SelectedTables,
                           SelectedTab?.Source is TabSource.Table t ? t.Name : null,
-                          Assistant.IncludeSql ? SelectedTab?.Text : null);
+                          Assistant.IncludeSql ? SelectedTab?.Text : null,
+                          CurrentDescriptions?.Aliases);
 
     /// 테이블 통계 (DB 마다 한 번 가져와 둔다; 실패하면 없이 진행)
     public async Task<Dictionary<string, TableStats>> AssistantStatsAsync()
@@ -184,9 +146,12 @@ public sealed partial class AppState
             return AssistantAI.Messages(DatabaseKind.Redis, AssistantAI.RedisContextText(guide, p.Name, p.RedisMode.Title()), history, english);
         var stats = await AssistantStatsAsync();
         var tab = SelectedTab;
-        var ctx = new AssistantAI.Context(p.Kind, p.Name, CurrentDatabase, Tables, AssistantFocus(question), stats,
+        var focus = AssistantFocus(question);
+        var ctx = new AssistantAI.Context(p.Kind, p.Name, CurrentDatabase, DescribedTables, focus, stats,
                                           Assistant.IncludeSql ? tab?.Text : null, Assistant.IncludeSql ? tab?.Error : null);
-        return AssistantAI.Messages(p.Kind, guide + "\n" + AssistantAI.ContextText(ctx), history, english);
+        var context = guide + "\n" + AssistantAI.ContextText(ctx);
+        if (CurrentDescriptions?.ContextText(focus.Select(t => t.Name)) is { } d) context += "\n" + d;
+        return AssistantAI.Messages(p.Kind, context, history, english);
     }
 
     /// AI 대화(어시스턴트 · 다이어그램 AI)의 상태창 · 감사 로그 연결 (Mac DiagramChat.ask 의 app.log / logError)
@@ -230,7 +195,7 @@ public sealed partial class AppState
             (Tr("PC · 네트워크 정보 확인 중 (감사 로그)"), async () => { await LogStartupAsync(); return null; }),
             (Tr("AI(Ollama) 연결 확인 중"), async () =>
             {
-                if (!TuningSettings.Enabled && !TuningSettings.AssistantEnabled) return Tr("꺼짐");
+                if (!TuningSettings.AssistantEnabled) return Tr("꺼짐");
                 var status = await WithTimeout(2.5, ct => TuningSettings.Client.StatusAsync(ct));
                 return status switch
                 {

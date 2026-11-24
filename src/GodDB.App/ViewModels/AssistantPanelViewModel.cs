@@ -24,9 +24,11 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
     public event Action? ChatChanged;
     /// 범위 · 문맥(함께 보낼 정보 · 빠른 질문)이 바뀌었을 때
     public event Action? ContextChanged;
+    /// 데이터 찾기 답 카드가 바뀌었을 때 (UI 스레드)
+    public event Action? CardsChanged;
 
     /// 상태 확인에 쓸 Ollama (기본: 설정의 주소). 테스트에서 바꾼다.
-    public Func<OllamaClient> ClientFactory { get; set; } = () => TuningSettings.Client;
+    public Func<OllamaClient> ClientFactory { get; set; } = () => AISettings.Client;
 
     public AssistantPanelViewModel(AppState app)
     {
@@ -37,6 +39,8 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
         app.PropertyChanged += OnAppChanged;
         app.ConnectionChanged += _ => Refresh();
         app.Assistant.PropertyChanged += OnAssistantChanged;
+        app.Assistant.FinderCardChanged += _ => CardsChanged?.Invoke();
+        app.TableDescriptionsChanged += () => AppState.RunOnUi(() => ContextChanged?.Invoke());
     }
 
     private void OnChatChanged() => AppState.RunOnUi(() => ChatChanged?.Invoke());
@@ -60,6 +64,7 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
     private void OnAssistantChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AssistantState.IncludeSql)) ContextChanged?.Invoke();
+        if (e.PropertyName == nameof(AssistantState.FinderMode)) OnPropertyChanged(nameof(FinderOn));
         if (e.PropertyName == nameof(AssistantState.Visible) && App.Assistant.Visible) _ = CheckOllamaAsync();
     }
 
@@ -105,6 +110,8 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
         }
         if (App.Assistant.IncludeSql && App.SelectedTab is { } tab && tab.Text.Trim().Length > 0)
             output.Add((">_", Tr("SQL · %@", tab.Title)));
+        if (App.TableDescriptions.Doc(p.Id, App.CurrentDatabase) is { } d)
+            output.Add(("📄", Tr("테이블 설명 · 테이블 %@개", d.Tables.Count)));
         return output;
     }
 
@@ -124,13 +131,29 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
 
     partial void OnInputChanged(string value) => OnPropertyChanged(nameof(CanSend));
 
-    /// 입력한 질문 보내기 (Enter)
+    // MARK: - 데이터 찾기 (Mac 1.4.0)
+
+    /// 데이터 찾기는 SQL 접속에서만 (Redis · 모델링 제외)
+    public bool CanFind => IsSql && !IsModeling;
+    public bool FinderOn => CanFind && App.Assistant.FinderMode;
+
+    /// 🔎 데이터 위치 찾기: 다음 입력을 데이터 찾기로
+    public void StartFinder() => App.Assistant.FinderMode = true;
+    public void StopFinder() => App.Assistant.FinderMode = false;
+
+    /// 답 메시지에 붙은 데이터 찾기 카드 (없으면 null)
+    public DataFinderCard? CardOf(AiChat.Message m) => m.Role == "user" ? null : App.Assistant.FinderCard(m.Id);
+
+    /// 입력한 질문 보내기 (Enter). 답하는 중이면 그 답을 멈추고 이 글을 먼저 (#177).
+    /// 데이터 찾기 모드이거나 "…어디 있어?" 꼴이면 데이터 찾기 (SQL 접속만, 애매하면 일반 질문)
     public void Send()
     {
         var q = Input;
         if (q.Trim().Length == 0) return;
         Input = "";
-        Ask(q);
+        Refresh();
+        if (CanFind && (FinderOn || DataFinder.IsFindQuestion(q))) App.FindData(q);
+        else App.AskAssistant(q);
     }
 
     /// 질문 보내기 (빠른 질문은 Expand 한 문장)
@@ -172,7 +195,7 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
         switch (status)
         {
             case OllamaStatus.Running r:
-                OllamaHint = r.Models.Count == 0 || TuningSettings.ResolveModel(r.Models, TuningSettings.Model).Length == 0
+                OllamaHint = r.Models.Count == 0 || TuningSettings.ResolveModel(r.Models, AISettings.Model).Length == 0
                     ? Tr("AI 에 쓸 모델을 설정 > AI 에서 골라 주세요.") : null;
                 OllamaFix = OllamaAction.None;
                 break;

@@ -151,20 +151,17 @@ public static class ModelDiagram
         }
     }
 
-    /// 자동 정렬: 부모는 왼쪽, 자식은 오른쪽 (스키마 다이어그램과 같은 배치). 호출 전에 Checkpoint.
+    /// 자동 정렬: 관계에 따라 부모는 왼쪽 열, 자식은 오른쪽 열에 겹치지 않게 (Mac 1.4.0 ModelLayout). 호출 전에 Checkpoint.
+    /// 카드 높이는 화면과 같은 계산 (컬럼이 많은 카드도 겹치지 않게)
     public static void AutoLayout(DataModel model)
     {
-        var metas = model.Tables.Select(t => new TableMeta(ModelStore.FormatId(t.Id),
-            columns: t.Columns.Select(c => new ColumnMeta(ModelStore.FormatId(c.Id), "", true)))).ToList();
-        var fks = model.Relations.Select(r => new ForeignKeyMeta("r", ModelStore.FormatId(r.Child), [],
-                                                                  ModelStore.FormatId(r.Parent), [])).ToList();
-        var frames = DiagramLayout.Frames(metas, fks, cardWidth: CardWidth);
+        var frames = ModelLayout.Frames(model, CardHeight, new ModelLayout.Options(CardWidth: CardWidth));
         foreach (var t in model.Tables)
         {
-            if (frames.TryGetValue(ModelStore.FormatId(t.Id), out var f))
+            if (frames.TryGetValue(t.Id, out var f))
             {
-                t.X = f.MinX + 40;
-                t.Y = f.MinY + 40;
+                t.X = f.MinX;
+                t.Y = f.MinY;
             }
         }
     }

@@ -150,7 +150,7 @@ public partial class QueryWorkspaceView : UserControl
                 Width = 6, Height = 6, VerticalAlignment = VerticalAlignment.Center,
                 Fill = connected ? Q.Green : new SolidColorBrush(Color.FromArgb(0x66, 0x8A, 0x8A, 0x8E)),
             });
-        if (profile != null) row.Children.Add(new KindBadge { Kind = profile.Kind, VerticalAlignment = VerticalAlignment.Center });
+        if (profile != null) row.Children.Add(new KindBadge { Kind = profile.Kind, Redshift = profile.Redshift, VerticalAlignment = VerticalAlignment.Center });
         var title = new TextBlock { Text = QueryUi.TabTitle(tab), FontSize = 12, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis };
         if (tab.FilePath != null) ToolTip.SetTip(title, tab.FilePath);
         var sub = new TextBlock { Text = QueryUi.TabSubtitle(profile?.Name, tab.Database), FontSize = 10, Classes = { "secondary" }, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis };

@@ -285,6 +285,89 @@ public class AuditIntegrityTests
     }
 
     [Fact]
+    public void TwoAppInstancesKeepOneChain()
+    {
+        // 앱이 동시에 두 개 켜져 같은 파일에 번갈아 써도 체인이 갈라지지 않는다
+        using var dir = new TempDir();
+        var key = new SoftwareDeviceSigner();
+        var a = new LogFile(dir.Path, retention: () => 0, signer: () => key);
+        var b = new LogFile(dir.Path, retention: () => 0, signer: () => key);
+        for (int i = 0; i < 6; i++)
+        {
+            var file = i % 2 == 0 ? a : b;
+            file.Append(new LogEntry(LogLevel.Success, LogSource.Query, "",
+                                     Audit: new AuditRecord(AuditAction.Read, "dev", $"{i}", $"SELECT {i}")) { Date = Day1.AddSeconds(i) });
+            file.Flush();
+        }
+        var r = AuditChain.Verify(dir.Path);
+        Assert.Equal(AuditFileStatus.Ok.Instance, r.First().Status);
+        Assert.Equal(7, r.First().Lines);   // 체인 + 6줄
+    }
+
+    [Fact]
+    public void ForkFromConcurrentWriterIsSuspectNotTampered()
+    {
+        // 예전 버전처럼 각자 기억한 마지막 값에 이어 쓴 줄: 앞의 다른 줄 값에 이어져 있고 서명도 맞다 → "의심"
+        using var dir = new TempDir();
+        var key = new SoftwareDeviceSigner();
+        Write(dir.Path, key, [Day1], perDay: 3);
+        var f = FirstFile(dir.Path);
+        var rows = File.ReadAllText(f, Encoding.UTF8).Split('\n').ToList();
+        if (rows[^1] == "") rows.RemoveAt(rows.Count - 1);
+        var forkFrom = rows[3].Split('\t')[6];                                                   // 파일 4번째 줄 값
+        var line = string.Join('\t', "2027-01-15 08:00:09.000", "u@pc", "접속", "dev", "성공", "x");
+        var sealedLine = AuditChain.Seal(forkFrom, line, key);
+        rows.Add(line + "\t" + sealedLine.Suffix);                                               // 파일 6번째 줄 (5번째가 아닌 4번째에 이어짐)
+        File.WriteAllText(f, string.Join("\n", rows) + "\n", new UTF8Encoding(false));
+        var status = Assert.IsType<AuditFileStatus.Unlinked>(AuditChain.Verify(dir.Path).First().Status);
+        Assert.True(status.Reason.Contains("6번째 줄") && status.Reason.Contains("동시에"), status.Reason);
+    }
+
+    /// Windows 추가: 실제로 프로세스 두 개가 같은 로그 폴더에 동시에 써도 한 줄기 체인으로 남는다 (이름 있는 Mutex)
+    [Fact]
+    public void TwoProcessesWriteConcurrentlyInOneChain()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.Path);
+        using var key = new SoftwareDeviceSigner();
+        const int perProcess = 40;
+        var children = Enumerable.Range(0, 2).Select(n => AuditChildProcess.Start(dir.Path, key.ExportPkcs8(), $"p{n}", perProcess)).ToList();
+        foreach (var c in children)
+        {
+            Assert.True(c.WaitForExit(120_000), "자식 프로세스가 끝나지 않음");
+            c.Process.WaitForExit();
+            Assert.True(c.ExitCode == 0, $"자식 프로세스 실패 ({c.ExitCode}): {c.Log}");
+        }
+        var r = AuditChain.Verify(dir.Path);
+        var report = Assert.Single(r);
+        Assert.Equal(AuditFileStatus.Ok.Instance, report.Status);
+        Assert.Equal(1 + 2 * perProcess, report.Lines);   // 체인 + 두 프로세스의 모든 줄
+        var text = File.ReadAllText(Directory.GetFiles(dir.Path, "*.tsv").Single(), Encoding.UTF8);
+        Assert.Equal(perProcess, text.Split('\n').Count(l => l.Contains("\tp0-")));
+        Assert.Equal(perProcess, text.Split('\n').Count(l => l.Contains("\tp1-")));
+    }
+
+    /// 자식 프로세스 쪽: 환경 변수가 있을 때만 쓴다 (평소 테스트 실행에서는 아무것도 하지 않고 통과)
+    [Fact]
+    public void AuditChildWriter()
+    {
+        if (Environment.GetEnvironmentVariable(AuditChildProcess.DirVar) is not { Length: > 0 } dir) return;
+        var key = SoftwareDeviceSigner.FromPkcs8(Convert.FromBase64String(Environment.GetEnvironmentVariable(AuditChildProcess.KeyVar)!))!;
+        var tag = Environment.GetEnvironmentVariable(AuditChildProcess.TagVar)!;
+        var count = int.Parse(Environment.GetEnvironmentVariable(AuditChildProcess.CountVar)!, CultureInfo.InvariantCulture);
+        // 두 프로세스가 동시에 시작하도록 잠깐 맞춘다
+        var startAt = DateTime.FromBinary(long.Parse(Environment.GetEnvironmentVariable(AuditChildProcess.StartVar)!, CultureInfo.InvariantCulture));
+        while (DateTime.UtcNow < startAt) Thread.Sleep(5);
+        var file = new LogFile(dir, retention: () => 0, signer: () => key);
+        for (int i = 0; i < count; i++)
+        {
+            file.Append(new LogEntry(LogLevel.Success, LogSource.Query, "",
+                                     Audit: new AuditRecord(AuditAction.Read, "dev", $"{tag}-{i}", $"SELECT {i}")) { Date = Day1.AddMilliseconds(i) });
+            file.Flush();   // 한 줄씩 써서 두 프로세스가 섞이게
+        }
+    }
+
+    [Fact]
     public void LegacyFilesAreReported()
     {
         using var dir = new TempDir();

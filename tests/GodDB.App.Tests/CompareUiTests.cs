@@ -185,7 +185,8 @@ public class CompareUiTests
             vm.Selection = vm.Visible.First(i => i.Kind == SchemaDiffKind.ExtraTable);
             Assert.Equal("-- 참고용 항목이라 SQL을 만들지 않아요.", vm.SelectedSql);
             vm.Selection = vm.Visible.First(i => i.Kind == SchemaDiffKind.MissingIndex);
-            Assert.Equal("ALTER TABLE `tb_member` ADD INDEX `idx_name` (`name`);", vm.SelectedSql);
+            // Mac 1.4.0: 고른 항목의 SQL 은 테이블마다 "-- 테이블" 머리줄 뒤에
+            Assert.Equal("-- tb_member\nALTER TABLE `tb_member` ADD INDEX `idx_name` (`name`);", vm.SelectedSql);
             Pump();
 
             // 복사 · 쿼리 탭으로 열기 (실행하지 않는다)

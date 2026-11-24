@@ -23,6 +23,11 @@
     <Style Selector="Border.groupHeader.dropTarget">
       <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
     </Style>
+    <!-- 다른 접속을 이 줄에 놓으면 이 접속 바로 앞으로 (윗줄 표시) -->
+    <Style Selector="Border.profileRow.dropTarget">
+      <Setter Property="BorderBrush" Value="{DynamicResource BlueBrush}"/>
+      <Setter Property="BorderThickness" Value="0,2,0,0"/>
+    </Style>
     <Style Selector="TextBlock.sectionHeader">
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -36,20 +41,24 @@
       <Setter Property="MinHeight" Value="24"/>
       <Setter Property="Padding" Value="0"/>
     </Style>
+    <!-- 기본 선택색(진한 파랑)이 눈이 아프다는 의견으로 옅게 (Mac 1.4.0: 강조색 15%) -->
+    <Style Selector="TreeView#TableTree TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
+    </Style>
   </UserControl.Styles>
 
   <UserControl.DataTemplates>
     <DataTemplate DataType="vm:ProfileRowViewModel">
       <Border Classes="profileRow" Classes.selected="{Binding IsSelected}"
               Tapped="OnProfileTapped" DoubleTapped="OnProfileDoubleTapped" ContextRequested="OnProfileContext"
-              PointerPressed="OnProfilePointerPressed" PointerMoved="OnProfilePointerMoved">
+              PointerPressed="OnProfilePointerPressed" PointerMoved="OnProfilePointerMoved" DragDrop.AllowDrop="True">
         <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
           <Panel Width="10" VerticalAlignment="Center">
             <Ellipse Width="7" Height="7" Fill="{Binding DotBrush}"/>
             <TextBlock Text="◌" FontSize="10" IsVisible="{Binding IsConnecting}" HorizontalAlignment="Center"/>
           </Panel>
           <!-- [연결 상태] [DB 로고] 이름 [환경] (Mac ProfileRow) -->
-          <c:KindBadge Grid.Column="1" Kind="{Binding Kind}"/>
+          <c:KindBadge Grid.Column="1" Kind="{Binding Kind}" Redshift="{Binding Redshift}"/>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" ClipToBounds="True">
             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                        FontWeight="{Binding IsSelected, Converter={x:Static l:Conv.SemiboldIf}}"/>
@@ -66,9 +75,10 @@
                 Background="Transparent" BorderThickness="0" MinHeight="0">
         <Expander.Header>
           <Border Classes="groupHeader" Background="Transparent" DragDrop.AllowDrop="True" ContextRequested="OnGroupContext"
+                  PointerPressed="OnGroupPointerPressed" PointerMoved="OnGroupPointerMoved"
                   Padding="0,2" Tag="{Binding Name}">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
-              <TextBlock Text="📁" FontSize="11" VerticalAlignment="Center"/>
+              <c:SymbolIcon Symbol="FolderFill" Classes="accent" Opacity="0.8" Width="12" Height="12" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="2" Text="{Binding ConnectedText}" IsVisible="{Binding HasConnected}" FontSize="10"
                          Foreground="{DynamicResource GreenBrush}" ToolTip.Tip="{Binding ConnectedTip}" VerticalAlignment="Center"/>
@@ -86,7 +96,7 @@
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0"
             IsVisible="{Binding ShowSchema}" Padding="8,6">
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-        <TextBlock Text="🔍" Classes="secondary" VerticalAlignment="Center"/>
+        <c:SymbolIcon Symbol="Magnifier" Classes="secondary" VerticalAlignment="Center"/>
         <TextBox Grid.Column="1" x:Name="FilterBox" Text="{Binding App.TableFilter}" PlaceholderText="{l:T 테이블 검색}"
                  BorderThickness="0" Background="Transparent"/>
       </Grid>
@@ -97,19 +107,42 @@
 
     <ScrollViewer x:Name="Scroll" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="6,0,6,8">
-        <TextBlock Classes="sectionHeader" Text="{l:T 접속}"/>
+        <!-- "접속" 제목 + 정렬 메뉴 (Mac ConnectionSortMenu) -->
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="sectionHeader" Text="{l:T 접속}"/>
+          <Button Grid.Column="1" x:Name="SortButton" Classes="borderless" IsVisible="{Binding ShowSortMenu}" VerticalAlignment="Bottom"
+                  Margin="0,0,0,2" Padding="4,1" ToolTip.Tip="{l:T 접속 목록 정렬}" Click="OnSortMenu"
+                  AutomationProperties.Name="{l:T 접속 목록 정렬}">
+            <TextBlock FontSize="11" Classes="accent"><Run Text="☰ "/><Run Text="{Binding SortTitle}"/></TextBlock>
+          </Button>
+        </Grid>
+        <!-- 접속 찾기 (Esc 로 지움) -->
+        <Border IsVisible="{Binding HasProfiles}" Background="#0F808080" CornerRadius="6" Padding="6,0" Margin="0,0,0,4">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
+            <c:SymbolIcon Symbol="Magnifier" Classes="secondary" Width="12" Height="12" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1" x:Name="ConnectionSearch" Text="{Binding ConnectionQuery}" PlaceholderText="{l:T '접속 찾기 (이름 · 주소 · DB · 그룹)'}"
+                     BorderThickness="0" Background="Transparent" MinHeight="22" Padding="0,2" KeyDown="OnConnectionSearchKey"/>
+            <Button Grid.Column="2" Classes="borderless" Content="✕" FontSize="10" Padding="2,0" Command="{Binding ClearConnectionQueryCommand}"
+                    ToolTip.Tip="{l:T 지우기}" IsVisible="{Binding ConnectionQuery, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+          </Grid>
+        </Border>
         <ItemsControl ItemsSource="{Binding ConnectionItems}"/>
+        <TextBlock Text="{Binding ConnectionSearchText}" IsVisible="{Binding ConnectionSearchText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   FontSize="10" Classes="secondary" Margin="4,2"/>
         <Grid ColumnDefinitions="*,Auto" Margin="2,4,0,0">
           <Button Classes="link" Command="{Binding NewProfileCommand}" HorizontalAlignment="Left">
             <TextBlock><Run Text="＋ "/><Run Text="{l:T 새 접속}"/></TextBlock>
           </Button>
-          <Button Grid.Column="1" Classes="borderless" Content="⇅" ToolTip.Tip="{l:T '접속 정보 내보내기 / 가져오기'}">
+          <!-- 아이콘만으로는 작아서 잘 안 보여 글자를 함께 쓴다 ("새 접속"과 같은 모양) -->
+          <Button Grid.Column="1" Classes="link" ToolTip.Tip="{l:T '접속 정보 내보내기 / 가져오기'}">
+            <TextBlock><Run Text="⇅ "/><Run Text="{l:T '가져오기 · 내보내기'}"/></TextBlock>
             <Button.Flyout>
               <MenuFlyout>
                 <MenuItem Header="{l:T 접속 정보 내보내기…}" Command="{Binding ExportConnectionsCommand}" IsEnabled="{Binding HasProfiles}"/>
                 <MenuItem Header="{l:T 접속 정보 가져오기…}" Command="{Binding ImportConnectionsCommand}"/>
                 <Separator/>
                 <MenuItem Header="{l:T 'DataGrip 접속 정보 붙여넣기'}" Command="{Binding PasteDataGripCommand}" InputGesture="Ctrl+V"/>
+                <MenuItem Header="{l:T 'DBeaver 접속 정보 가져오기…'}" Command="{Binding ImportDBeaverCommand}"/>
               </MenuFlyout>
             </Button.Flyout>
           </Button>
@@ -124,14 +157,19 @@
         </Panel>
 
         <StackPanel IsVisible="{Binding ShowSchema}">
-          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
+          <!-- 오른쪽 세로 스크롤바와 겹치지 않게 오른쪽 14 (Mac 1.4.0) -->
+          <Grid x:Name="SchemaHeader" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,14,4">
             <TextBlock Text="{Binding ContainerTitle}" Classes="secondary" VerticalAlignment="Center"/>
             <ComboBox Grid.Column="1" ItemsSource="{Binding Databases}" SelectedItem="{Binding CurrentDatabase}"
                       HorizontalAlignment="Stretch" MinWidth="50" ToolTip.Tip="{Binding CurrentDatabase}" Padding="6,2"/>
             <TextBlock Grid.Column="2" Text="{Binding CountText}" VerticalAlignment="Center" FontSize="11"
                        Classes="secondary" Classes.accent="{Binding MultipleSelected}"/>
-            <Button Grid.Column="3" Classes="borderless" Content="⛓" Command="{Binding DiagramCommand}" x:Name="DiagramButton"/>
-            <Button Grid.Column="4" Classes="borderless" Content="⟳" Command="{Binding RefreshSchemaCommand}"
+            <!-- 테이블 설명 (AI 참고, Mac 1.4.3 #185): 없으면 흐린 빈 말풍선, 있으면 보라색 채운 말풍선 -->
+            <Button Grid.Column="3" Classes="borderless" x:Name="DescriptionsButton" VerticalAlignment="Center">
+              <c:TextBubbleIcon x:Name="DescriptionsIcon"/>
+            </Button>
+            <Button Grid.Column="4" Classes="borderless" Content="⛓" Command="{Binding DiagramCommand}" x:Name="DiagramButton"/>
+            <Button Grid.Column="5" Classes="borderless" Content="⟳" Command="{Binding RefreshSchemaCommand}"
                     ToolTip.Tip="{l:T '스키마 새로고침 (Ctrl+Shift+R)'}"/>
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SchemaLoading}" Margin="4,2">
@@ -150,6 +188,7 @@
                       <MenuItem Header="{l:T '테이블 수정 (ALTER)…'}" Command="{Binding AlterCommand}"/>
                       <MenuItem Header="{l:T 'CREATE 문 보기'}" Command="{Binding DdlCommand}"/>
                       <MenuItem Header="{l:T '인덱스 상세 보기'}" Command="{Binding IndexesCommand}"/>
+                      <MenuItem Header="{l:T 'ID 로 찾기…'}" Command="{Binding FindByIdCommand}"/>
                       <MenuItem Header="{Binding DiagramTitle}" Command="{Binding DiagramCommand}"/>
                       <Separator/>
                       <MenuItem Header="{l:T '이름 복사'}" Command="{Binding CopyNameCommand}"/>

@@ -103,7 +103,14 @@ public partial class MainWindow : Window
     public void StartUp(UpdateService? updates)
     {
         App.Updates = updates;
-        App.Fire(App.RunStartupAsync);
+        App.Fire(async () =>
+        {
+            await App.RunStartupAsync();
+            // 운영 접속 자동 끊기 감시 (설정 > 일반 > 안전)
+            App.StartIdleWatcher();
+        });
+        // 지난번 이전 버전 설치가 실패했으면 알린다 (Mac reportHelperFailureIfAny)
+        App.Fire(() => PreviousVersionInstaller.ReportPendingResultAsync(App));
     }
 
     // MARK: - AppState 변화
@@ -463,6 +470,10 @@ public partial class MainWindow : Window
             Item("모든 접속 끊기", () => app.Fire(app.DisconnectAllAsync)),
             new Separator(),
             Item("객체 빠른 찾기…", () => app.ShowQuickOpen = true, "Ctrl+O", () => app.CanQuickOpen),
+            // Mac 1.4.0: ⌥⌘F · ⌥⌘S · ⇧⌘K
+            Item("ID 로 찾기…", () => app.OpenIdSearch(), "Ctrl+Alt+F", () => app.CanSearchIds),
+            Item("쿼리 저장…", app.OpenSaveQuery, "Ctrl+Alt+S", () => app.CanSaveQuery),
+            Item("저장 쿼리…", app.OpenSavedQueries, "Ctrl+Shift+K", () => app.CanOpenSavedQueries),
             Item("쿼리 히스토리…", () => app.ShowHistory = true, "Ctrl+Y"));
 
         var view = Top("보기",
@@ -480,7 +491,8 @@ public partial class MainWindow : Window
             Item("새로운 기능", app.OpenReleaseNotes),
             Item("문제 보고…", () => app.ShowProblemReport = true),
             new Separator(),
-            Item("업데이트 확인…", () => app.Fire(() => app.CheckForUpdatesAsync(userInitiated: true))));
+            Item("업데이트 확인…", () => app.Fire(() => app.CheckForUpdatesAsync(userInitiated: true))),
+            Item("이전 버전 설치…", () => app.ShowPreviousVersions = true));
 
         MainMenu.ItemsSource = new[] { file, edit, db, view, help };
         RefreshEnabled();

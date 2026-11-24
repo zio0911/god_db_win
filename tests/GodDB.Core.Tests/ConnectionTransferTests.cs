@@ -40,6 +40,63 @@ public class ConnectionTransferTests
         Assert.Equal(ConnectionTransferErrorKind.WrongPassphrase, e.Kind);
     }
 
+    /// 새로 내보내면 60만 회, 1.4.2 까지의 20만 회 파일도 그대로 열림, 터무니없는 횟수는 거절 (Mac #191)
+    [Fact]
+    public void KeyStrengthAndOldFiles()
+    {
+        var data = ConnectionTransfer.Export([a], new Dictionary<Guid, string> { [a.Id] = "pw" }, passphrase: "team-pass");
+        Assert.Equal(600_000, ConnectionTransfer.Parse(data).Passwords?.Rounds);
+
+        var plain = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { [a.Id.ToString().ToUpperInvariant()] = "old-pw" });
+        var old = ConnectionTransfer.Encrypt(plain, "team-pass", rounds: 200_000);
+        Assert.Equal(200_000, old.Rounds);
+        Assert.Equal(plain, ConnectionTransfer.Decrypt(old, "team-pass"));
+
+        var huge = old with { Rounds = 2_000_000_000 };
+        var e = Assert.Throws<ConnectionTransferException>(() => ConnectionTransfer.Decrypt(huge, "team-pass"));
+        Assert.Equal(ConnectionTransferErrorKind.NotGodDBFile, e.Kind);
+    }
+
+    /// 접속 목록 파일은 나만 읽고 쓰게 (Mac 0600, Windows ACL), 예전 파일도 읽을 때 맞춤 (Mac #191)
+    [Fact]
+    public void ProfileFileIsPrivate()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        var store = new ProfileStore(path);
+        store.Save([a]);
+        Assert.True(GodDB.Core.Platform.UserOnlyFile.IsRestricted(path));
+        // 예전 파일 (다른 사람도 읽을 수 있는 권한)
+        if (OperatingSystem.IsWindows())
+        {
+            var text = File.ReadAllText(path);
+            File.Delete(path);
+            File.WriteAllText(path, text);   // 폴더 권한을 물려받은 새 파일
+        }
+        else File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        Assert.False(GodDB.Core.Platform.UserOnlyFile.IsRestricted(path));
+        Assert.Single(store.Load());
+        Assert.True(GodDB.Core.Platform.UserOnlyFile.IsRestricted(path));
+    }
+
+    /// 같은 ID 로 가져올 때 서버 · 계정이 바뀌면 예전 비밀번호를 쓰지 않는다 (#197)
+    [Fact]
+    public void SavedPasswordOnlyForSameServer()
+    {
+        var old = new ConnectionProfile { Kind = DatabaseKind.Mysql, Name = "a", Host = "db.example.test", Port = 3306, Username = "app" };
+        var same = old with { Name = "이름만 바뀜", Host = "DB.example.test" };
+        Assert.True(ConnectionTransfer.SavedPasswordStillApplies(old, same));
+        foreach (var n in new[]
+                 {
+                     old with { Host = "other.example.test" }, old with { Port = 3307 }, old with { Username = "root" },
+                     old with { Kind = DatabaseKind.Postgres }, old with { Ssh = new SshConfig { Host = "bastion.example.test" } },
+                 })
+            Assert.False(ConnectionTransfer.SavedPasswordStillApplies(old, n));
+        old = old with { Ssh = new SshConfig { Host = "b.example.test", Username = "u" } };
+        var viaOther = old with { Ssh = new SshConfig { Host = "b.example.test", Username = "v" } };
+        Assert.False(ConnectionTransfer.SavedPasswordStillApplies(old, viaOther));
+    }
+
     [Fact]
     public void PasswordsNeedPassphrase()
     {
@@ -111,7 +168,7 @@ public class ConnectionTransferTests
         var pw = root.GetProperty("passwords");
         Assert.Equal(["data", "kdf", "rounds", "salt"], pw.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("pbkdf2-sha256", pw.GetProperty("kdf").GetString());
-        Assert.Equal(200_000, pw.GetProperty("rounds").GetInt32());
+        Assert.Equal(600_000, pw.GetProperty("rounds").GetInt32());   // 1.4.3 부터 60만 회 (Mac #191)
         Assert.Equal(16, Convert.FromBase64String(pw.GetProperty("salt").GetString()!).Length);
         // 안의 JSON: {"<대문자 UUID>":"pw"} → nonce 12 + 암호문 + tag 16
         var plainLength = Encoding.UTF8.GetByteCount($"{{\"{a.Id.ToString().ToUpperInvariant()}\":\"pw\"}}");

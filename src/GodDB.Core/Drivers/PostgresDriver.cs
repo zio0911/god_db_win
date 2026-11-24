@@ -8,9 +8,42 @@ namespace GodDB.Core.Drivers;
 public sealed class PostgresDriver : IDbDriver
 {
     private readonly NpgsqlConnection _conn;
-    private PostgresDriver(NpgsqlConnection conn) => _conn = conn;
+    public TlsStatus TlsStatus { get; }
 
-    public static Task<PostgresDriver> ConnectAsync(DriverEndpoint e, CancellationToken ct = default) =>
+    private PostgresDriver(NpgsqlConnection conn, TlsStatus tlsStatus)
+    {
+        _conn = conn;
+        TlsStatus = tlsStatus;
+    }
+
+    public static async Task<PostgresDriver> ConnectAsync(DriverEndpoint e, CancellationToken ct = default)
+    {
+        var verifier = e.UseTLS && e.Tls.Verify ? new TlsVerifier(e.Tls) : null;
+        try
+        {
+            var conn = await OpenAsync(e, verifier, ct);
+            return new PostgresDriver(conn, e.UseTLS ? verifier?.Status ?? TlsStatus.Unchecked : TlsStatus.Off);
+        }
+        catch (Exception ex) when (verifier?.Failure is { } failure && ex is not OperationCanceledException)
+        {
+            throw failure;
+        }
+        catch (Exception ex) when (e.UseTLS && IsSslUnsupported(ex))
+        {
+            throw TlsCertificateException.ServerNoTls();
+        }
+    }
+
+    /// TLS 필수인데 서버가 TLS 를 하지 않을 때 Npgsql 이 내는 오류
+    internal static bool IsSslUnsupported(Exception ex)
+    {
+        for (var x = ex; x != null; x = x.InnerException)
+            if (x.Message.Contains("SSL connection requested", StringComparison.OrdinalIgnoreCase)
+                || x.Message.Contains("does not support SSL", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private static Task<NpgsqlConnection> OpenAsync(DriverEndpoint e, TlsVerifier? verifier, CancellationToken ct) =>
         DriverUtil.TryEachAsync(e.Host, async ip =>
         {
             var b = new NpgsqlConnectionStringBuilder
@@ -20,16 +53,22 @@ public sealed class PostgresDriver : IDbDriver
                 Username = e.Username,
                 Password = e.Password ?? "",
                 Database = string.IsNullOrEmpty(e.Database) ? "postgres" : e.Database,
-                // Prefer: 서버가 TLS 를 지원하면 암호화, 인증서는 검증하지 않는다 (Mac 과 같음)
-                SslMode = e.UseTLS ? SslMode.Prefer : SslMode.Disable,
+                // Require: TLS 를 켜면 반드시 TLS (서버가 안 하면 오류 — "가능하면 TLS" 로 평문에 내려가지 않는다, Mac 과 같음).
+                // 인증서는 아래 콜백(TlsVerifier)이 판정한다. 콜백이 없으면(확인 끔) 암호화만 한다.
+                SslMode = e.UseTLS ? SslMode.Require : SslMode.Disable,
                 Pooling = false,
                 Timeout = e.ConnectTimeoutSeconds,
                 ApplicationName = "GodDB",
             };
             var conn = new NpgsqlConnection(b.ConnectionString);
+            if (verifier != null)
+                conn.SslClientAuthenticationOptionsCallback = o => o.RemoteCertificateValidationCallback = verifier.Callback;
+            // SNI 에는 도메인만 쓸 수 있다 (IP 로 붙어도 원래 호스트 이름으로)
+            if (e.UseTLS && e.ServerName is { } sni)
+                conn.SslClientAuthenticationOptionsCallback += o => o.TargetHost = sni;
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }
-            return new PostgresDriver(conn);
+            return conn;
         }, ct);
 
     public bool IsOpen => _conn.State == System.Data.ConnectionState.Open;

@@ -132,7 +132,7 @@ public class IntegrationTests
             var p = It.MySql(db) with { ReadOnly = true };
             await using var s = await DbSession.ConnectAsync(p, It.MySqlPassword);
             var e = await Assert.ThrowsAsync<GodDbException>(() => s.ExecuteAsync("DELETE FROM tb_member", limit: 0));
-            Assert.Equal(DbErrorKind.ReadOnlyBlocked, e.Kind);
+            Assert.Equal(DbErrorKind.ReadOnlyRejected, e.Kind);
             // 가드를 우회하더라도 서버 세션이 읽기전용이라 거부된다 (MySQL 1792)
             var server = await Assert.ThrowsAnyAsync<Exception>(() => s.RawAsync("INSERT INTO tb_member (email) VALUES ('x')"));
             Assert.Equal(1792, Assert.IsType<MySqlConnector.MySqlException>(server).Number);

@@ -11,7 +11,7 @@ namespace GodDB.Core.Modeling;
 // Swift 의 값 타입(struct)을 C# 클래스로 옮겼다. 복사가 필요한 곳(되돌리기 스냅샷, 복제)은 Clone() 을 쓰고,
 // 같음 비교(==)는 Swift Hashable 처럼 모든 필드를 값으로 비교한다.
 
-/// 데이터 모델 (MySQL Workbench 의 모델처럼): 논리명으로 설계하고, 물리명을 붙여 DDL 로 뽑는다.
+/// 데이터 모델: 논리명으로 설계하고, 물리명을 붙여 DDL 로 뽑는다.
 public sealed partial class DataModel : IEquatable<DataModel>
 {
     public const string FileExtension = "goddbmodel";

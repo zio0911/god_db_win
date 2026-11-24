@@ -10,6 +10,8 @@ public sealed class MySqlDialect : SqlDialect
     public override string QuoteIdent(string name) => SqlText.QuoteIdent(name);
 
     public override string? ReadOnlySessionSql => "SET SESSION TRANSACTION READ ONLY";
+    /// MySQL 5.7.8+: SELECT 에만 적용된다 (MariaDB 는 이 변수가 없어 실패 → 무시)
+    public override string? StatementTimeoutSql(int milliseconds) => $"SET SESSION max_execution_time = {milliseconds}";
     public override string SessionIdSql => "SELECT CONNECTION_ID()";
     public override string CancelSql(int sessionId) => $"KILL QUERY {sessionId}";
 

@@ -28,6 +28,8 @@ public sealed record DriverEndpoint
     /// SQL Server Windows 통합 인증
     public bool WindowsAuth { get; init; }
     public int ConnectTimeoutSeconds { get; init; } = 15;
+    /// 서버 인증서 확인 방법 (F9-3)
+    public TlsPolicy Tls { get; init; } = new(false, null, null);
 }
 
 /// DB 와 실제로 통신하는 부분.
@@ -36,6 +38,8 @@ public interface IDbDriver : IAsyncDisposable
     /// SQL 을 실행하고 결과 집합 하나를 돌려준다 (DB 별 규칙은 각 드라이버 참고). 결과가 없으면 빈 결과.
     Task<RawResult> QueryAsync(string sql, int timeoutSeconds = 0, CancellationToken ct = default);
     bool IsOpen { get; }
+    /// 연결 후 상태창에 남길 TLS 상태 (F9-3)
+    TlsStatus TlsStatus => TlsStatus.Off;
 }
 
 public static class BinaryText

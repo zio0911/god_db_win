@@ -94,8 +94,11 @@ internal static class LiveOllama
 
 public class DiagramChatStoreTests
 {
+    /// 실제 키 저장소 대신 메모리 키 (Mac 1.4.1 부터 대화 파일은 GDBENC1 암호화)
+    private static readonly GodDB.Core.Platform.LocalDataCrypto Crypto = new(new GodDB.Core.Platform.StaticLocalDataKeyProvider());
+
     private static DiagramChatStore Store() =>
-        new(Path.Combine(Path.GetTempPath(), $"goddb-chat-{Guid.NewGuid()}"));
+        new(Path.Combine(Path.GetTempPath(), $"goddb-chat-{Guid.NewGuid()}"), crypto: Crypto);
 
     [Fact]
     public void SavesLoadsAndDeletes()
@@ -152,7 +155,7 @@ public class DiagramChatStoreTests
         finally { try { Directory.Delete(s.Directory, true); } catch { } }
     }
 
-    // Windows 판 추가: 파일 권한(본인만)과 Mac 과 같은 JSON 모양
+    // Windows 판 추가: 파일 권한(본인만)과 Mac 과 같은 JSON 모양 (암호화 봉투 안)
     [Fact]
     public void FileIsUserOnlyAndUsesMacJsonShape()
     {
@@ -163,7 +166,8 @@ public class DiagramChatStoreTests
             s.Save(c, "scope");
             var path = s.FilePath("scope");
             Assert.Matches(@"[0-9a-f]{24}\.json$", path);
-            var json = File.ReadAllText(path);
+            Assert.True(GodDB.Core.Platform.LocalDataCrypto.IsEncrypted(File.ReadAllBytes(path)));
+            var json = Crypto.ReadText(path)!;
             Assert.Matches(@"^\[\{""created"":""\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"",""id"":""[0-9a-f-]{36}"",""messages"":\[\{""failed"":false,""role"":""user"",""text"":""q""\}\],""updated"":", json);
             if (!OperatingSystem.IsWindows())
                 Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));

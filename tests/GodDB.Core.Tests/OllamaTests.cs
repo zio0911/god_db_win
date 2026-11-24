@@ -152,7 +152,7 @@ public class OllamaClientTests
         Assert.False(TuningSettings.IsLocalUrl("http://10.0.0.5:11434"));
         Assert.False(TuningSettings.IsLocalUrl("http://ollama.example.com"));
         Assert.False(TuningSettings.IsLocalUrl("not a url"));
-        Assert.Contains("이 PC 밖의 주소", TuningSettings.NonLocalWarning);
+        Assert.Contains("이 PC 의 Ollama 만", TuningSettings.NonLocalWarning);
     }
 }
 

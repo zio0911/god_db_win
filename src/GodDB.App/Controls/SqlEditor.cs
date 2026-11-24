@@ -83,7 +83,7 @@ public static class LineEndings
 /// - Ctrl+/ 주석 토글, Ctrl+Alt+L SQL 정렬, 선택이 없으면 Ctrl+Enter 로 실행될 문장을 옅게 칠함
 /// - INSERT … VALUES 값 앞에 컬럼 이름을 회색으로 (문서 글자가 아닌 화면 요소 — 복사·실행 SQL 은 그대로)
 /// 키 처리는 이 단축키들만 가로챈다 (한글 IME 입력은 AvaloniaEdit 기본 처리 그대로).
-public class SqlEditor : TextEditor
+public partial class SqlEditor : TextEditor
 {
     protected override Type StyleKeyOverride => typeof(TextEditor);
 
@@ -144,6 +144,7 @@ public class SqlEditor : TextEditor
         TextArea.DocumentChanged += (_, _) => OnDocumentSwapped();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         ContextMenu = BuildContextMenu();
+        InitLint();
         Document ??= new TextDocument();
         OnDocumentSwapped();
     }
@@ -160,6 +161,8 @@ public class SqlEditor : TextEditor
         _attached.TextChanged += OnDocumentTextChanged;
         _text = _attached.Text;
         RefreshDecorations();
+        // 다른 탭의 문서로 바뀌면 앞 문서의 밑줄은 바로 지우고 다시 검사한다
+        ScheduleLint(clear: true);
     }
 
     private void OnDocumentTextChanged(object? sender, EventArgs e)
@@ -169,6 +172,7 @@ public class SqlEditor : TextEditor
         if (text.Contains('\r')) return;   // LF 로 바꾸는 중 — 바꾼 뒤 다시 불린다
         _text = text;
         RefreshDecorations();
+        ScheduleLint();
         SqlTextChanged?.Invoke();
     }
 
@@ -214,7 +218,7 @@ public class SqlEditor : TextEditor
         return string.IsNullOrWhiteSpace(t) ? null : t;
     }
 
-    /// 선택 영역이 있으면 선택 영역, 없으면 커서가 있는 문장 (실행 계획 · 튜닝용)
+    /// 선택 영역이 있으면 선택 영역, 없으면 커서가 있는 문장 (실행 계획 · 쿼리 저장용)
     public string? SqlToRun()
     {
         var (s, l) = Sel();
@@ -289,6 +293,9 @@ public class SqlEditor : TextEditor
                 CloseWhenCaretAtBeginning = true,
             };
             foreach (var c in list.Candidates) w.CompletionList.CompletionData.Add(new SqlCompletionItem(c));
+            // 잘못 쓴 이름의 "비슷한 후보" 목록(a.username → name …)은 입력한 글자로 거르면 목록이 비므로 거르지 않는다 (Mac 1.4.2)
+            var typed = list.Start + list.Length <= _text.Length ? _text.Substring(list.Start, list.Length) : "";
+            if (list.Candidates.Any(c => !c.StartsWith(typed, StringComparison.OrdinalIgnoreCase))) w.CompletionList.IsFiltering = false;
             w.Closed += (_, _) =>
             {
                 if (ReferenceEquals(_completion, w)) { _completion = null; CompletionCandidates = null; }
@@ -384,6 +391,9 @@ public class SqlEditor : TextEditor
         var menu = new ContextMenu();
         menu.Items.Add(Item("주석 토글 (Ctrl+/)", ToggleComment));
         menu.Items.Add(Item("SQL 정렬 (Ctrl+Alt+L)", FormatSql));
+        menu.Items.Add(new Separator());
+        // 선택 영역(없으면 커서 문장)을 저장 쿼리로 (Mac 1.4.0)
+        menu.Items.Add(Item("쿼리 저장… (Ctrl+Alt+S)", () => SaveQueryRequested?.Invoke()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("잘라내기", Cut, "Ctrl+X"));
         menu.Items.Add(Item("복사", Copy, "Ctrl+C"));

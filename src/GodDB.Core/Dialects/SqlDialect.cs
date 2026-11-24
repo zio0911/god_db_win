@@ -18,6 +18,7 @@ public abstract partial class SqlDialect : ISqlDialect
     public virtual string ApplyingLimit(string sql, int limit) => SqlText.ApplyingLimit(sql, limit);
     public abstract string? ReadOnlySessionSql { get; }
     public virtual string? SessionSetupSql => null;
+    public virtual string? StatementTimeoutSql(int milliseconds) => null;
     public abstract string SessionIdSql { get; }
     public abstract string CancelSql(int sessionId);
 
@@ -105,6 +106,7 @@ public abstract partial class SqlDialect : ISqlDialect
     /// [테이블, 외래키 이름, 컬럼, 참조 테이블, 참조 컬럼, 순서] — 같은 DB/스키마 안의 참조만
     public string ForeignKeysSql(string schema)
     {
+        if (this is PostgresDialect { Redshift: true } rs) return rs.RedshiftForeignKeysSql(schema);
         var s = QuoteString(schema);
         return Kind switch
         {
@@ -142,19 +144,6 @@ public abstract partial class SqlDialect : ISqlDialect
                 """,
         };
     }
-
-    // MARK: - 예상 행 수 (Mac 판 Tuning.swift)
-
-    /// 통계상 예상 행 수 (정확한 COUNT 가 아님 — 빠름)
-    public string RowEstimateSql(string table, string schema) => Kind switch
-    {
-        DatabaseKind.Postgres => $"""
-            SELECT c.reltuples::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = {QuoteString(schema)} AND c.relname = {QuoteString(table)}
-            """,
-        DatabaseKind.Mssql => $"SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = OBJECT_ID({QuoteString(QuoteTable(table))}) AND p.index_id IN (0, 1)",
-        _ => $"SELECT TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = {QuoteString(schema)} AND TABLE_NAME = {QuoteString(table)}",
-    };
 
     // MARK: - 결과 페이징
 

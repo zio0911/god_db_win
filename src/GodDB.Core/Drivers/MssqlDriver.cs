@@ -8,7 +8,13 @@ namespace GodDB.Core.Drivers;
 public sealed class MssqlDriver : IDbDriver
 {
     private readonly SqlConnection _conn;
-    private MssqlDriver(SqlConnection conn) => _conn = conn;
+    public TlsStatus TlsStatus { get; }
+
+    private MssqlDriver(SqlConnection conn, TlsStatus tlsStatus)
+    {
+        _conn = conn;
+        TlsStatus = tlsStatus;
+    }
 
     /// `host\인스턴스` 이면 SQL Browser 로 포트를 찾는다 (포트는 쓰지 않음)
     internal static string DataSource(string host, int port) =>
@@ -16,29 +22,55 @@ public sealed class MssqlDriver : IDbDriver
 
     public static async Task<MssqlDriver> ConnectAsync(DriverEndpoint e, CancellationToken ct = default)
     {
-        async Task<MssqlDriver> Open(string server)
+        // 서버 인증서 확인 (F9-3): 확인을 켰고 직접 접속이거나 고정 지문이 있으면 인증서를 미리 받아 판정한다 (MssqlTls.cs)
+        var probe = e.UseTLS && e.Tls.Verify && (e.Tls.Hostname != null || !string.IsNullOrEmpty(e.Tls.Pin));
+        async Task<MssqlDriver> Open(string server, string? probeIp, int probePort)
         {
+            MssqlTls.SqlClientCheck check;
+            var status = !e.UseTLS ? TlsStatus.Off : !e.Tls.Verify ? TlsStatus.Unchecked : TlsStatus.TunnelUnchecked;
+            if (probe)
+            {
+                var verifier = new TlsVerifier(e.Tls);
+                var p = await MssqlTls.ProbeAsync(probeIp ?? server, probePort, e.ServerName, verifier, ct: ct);
+                check = MssqlTls.CheckFor(p.Verdict, p.Chain, e.Tls);
+                status = verifier.Status;
+            }
+            else check = new(TrustServerCertificate: true, HostName: null, ServerCertificateDer: null);
             var b = new SqlConnectionStringBuilder
             {
                 DataSource = DataSource(server, e.Port),
                 InitialCatalog = e.Database,
-                // 인증서는 검증하지 않는다 (터널 경유 시 호스트명이 달라짐 — Mac 과 같음)
+                // TLS 를 켜면 반드시 암호화 (Mandatory). 인증서 확인은 위 판정에 따라 SqlClient 에 맡긴다
                 Encrypt = e.UseTLS ? SqlConnectionEncryptOption.Mandatory : SqlConnectionEncryptOption.Optional,
-                TrustServerCertificate = true,
+                TrustServerCertificate = !e.UseTLS || check.TrustServerCertificate,
                 Pooling = false,
                 ConnectTimeout = e.ConnectTimeoutSeconds,
                 ApplicationName = "GodDB",
             };
+            if (e.UseTLS && check.HostName is { } name) b.HostNameInCertificate = name;
+            string? certFile = null;
+            if (e.UseTLS && check.ServerCertificateDer is { } der) b.ServerCertificate = certFile = MssqlTls.WriteServerCertificate(der);
             if (e.WindowsAuth) b.IntegratedSecurity = true;
             else { b.UserID = e.Username; b.Password = e.Password ?? ""; }
             var conn = new SqlConnection(b.ConnectionString);
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }
-            return new MssqlDriver(conn);
+            finally
+            {
+                if (certFile != null) try { File.Delete(certFile); } catch { }
+            }
+            return new MssqlDriver(conn, status);
         }
-        // Windows 인증(Kerberos)은 서버 이름으로 SPN 을 찾으므로, 인스턴스 이름이 있을 때와 함께 호스트 이름 그대로 연결한다
-        if (e.WindowsAuth || e.Host.Contains('\\')) return await Open(e.Host);
-        return await DriverUtil.TryEachAsync(e.Host, Open, ct);
+        // `host\인스턴스`: 미리 받기는 SQL Browser 가 알려 준 포트로
+        if (e.Host.Contains('\\'))
+        {
+            var parts = e.Host.Split('\\', 2);
+            var port = probe ? await MssqlTls.InstancePortAsync(parts[0], parts[1], ct) ?? e.Port : e.Port;
+            return await Open(e.Host, parts[0], port);
+        }
+        // Windows 인증(Kerberos)은 서버 이름으로 SPN 을 찾으므로 호스트 이름 그대로 연결한다
+        if (e.WindowsAuth) return await Open(e.Host, null, e.Port);
+        return await DriverUtil.TryEachAsync(e.Host, ip => Open(ip, ip, e.Port), ct);
     }
 
     public bool IsOpen => _conn.State == System.Data.ConnectionState.Open;

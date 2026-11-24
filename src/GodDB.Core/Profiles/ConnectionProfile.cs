@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GodDB.Core.Platform;
 using static GodDB.Core.L10n;
 
 namespace GodDB.Core;
@@ -103,10 +104,42 @@ public sealed record ConnectionProfile
     public ConnectionEnvironment Environment { get; set; } = ConnectionEnvironment.None;
     /// SQL Server Windows 통합 인증 (Windows 판에만 있는 항목. Mac 판은 이 칸을 무시한다)
     public bool WindowsAuth { get; set; }
+    /// TLS 서버 인증서 확인 (Mac tlsVerify. 예전 파일에 없으면 true). DBeaver 가져오기가 "확인 안 함" 설정을 옮긴다
+    public bool TlsVerify { get; set; } = true;
+    /// Amazon Redshift (Kind 는 Postgres — PostgreSQL 프로토콜로 연결). 아이콘 · 종류 표시용,
+    /// 실제 Redshift 여부는 연결할 때 서버 버전으로 다시 알아낸다.
+    public bool Redshift { get; set; }
+    /// 마지막으로 연결에 성공한 시각 (사이드바 "최근 연결순" 정렬)
+    public DateTimeOffset? LastConnectedAt { get; set; }
+    /// 사용자가 신뢰한 서버 인증서(맨 앞, DER)의 SHA-256 "3F:A2:…" (없으면 null)
+    [JsonPropertyName("tlsPinSHA256")]
+    public string? TlsPinSHA256 { get; set; }
 
     /// 비밀번호가 필요한 접속인지 (Windows 인증이면 필요 없음)
     [JsonIgnore]
     public bool NeedsPassword => !(Kind == DatabaseKind.Mssql && WindowsAuth);
+
+    /// 화면에 보이는 DB 종류 (Redshift 포함). 바꾸면 포트(이전 종류의 기본값일 때) · Redshift 표시 · TLS 를 맞춘다
+    [JsonIgnore]
+    public ConnectionType Type
+    {
+        get => ConnectionTypes.Of(Kind, Redshift);
+        set
+        {
+            var old = Type;
+            if (value == old) return;
+            // 포트가 이전 종류의 기본값이면 새 종류의 기본값으로
+            if (Port == old.DefaultPort()) Port = value.DefaultPort();
+            Kind = value.Kind();
+            Redshift = value == ConnectionType.Redshift;
+            // Redshift 는 TLS 가 기본
+            if (value == ConnectionType.Redshift) UseTLS = true;
+        }
+    }
+
+    /// 표시용 종류 이름 (Redshift 면 "Redshift")
+    [JsonIgnore]
+    public string TypeTitle => Type.Title();
 }
 
 /// 접속 목록을 %APPDATA%\GodDB\profiles.json 에 저장한다.
@@ -118,7 +151,8 @@ public sealed class ProfileStore(string? filePath = null)
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+        // lastConnectedAt: Mac profiles.json(JSONEncoder 기본값)과 같은 "2001-01-01 부터 초" 숫자
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase), new ReferenceDateConverter() },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
@@ -127,7 +161,10 @@ public sealed class ProfileStore(string? filePath = null)
         try
         {
             if (!File.Exists(FilePath)) return [];
-            return JsonSerializer.Deserialize<List<ConnectionProfile>>(File.ReadAllText(FilePath), Json) ?? [];
+            var text = File.ReadAllText(FilePath);
+            // 예전 버전이 만든 파일(상속 권한)도 나만 읽게 맞춘다 (Mac: 0644 → 0600)
+            if (!UserOnlyFile.IsRestrictedSafe(FilePath)) UserOnlyFile.Restrict(FilePath);
+            return JsonSerializer.Deserialize<List<ConnectionProfile>>(text, Json) ?? [];
         }
         catch { return []; }
     }
@@ -137,6 +174,8 @@ public sealed class ProfileStore(string? filePath = null)
         AppPaths.Ensure(Path.GetDirectoryName(FilePath)!);
         var tmp = FilePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(profiles.ToList(), Json));
+        // 접속 목록(호스트 · 계정 · SSH 키 경로)은 나만 읽고 쓰게 (Mac: 0600). 비밀번호는 자격 증명 관리자에 따로 있다
+        UserOnlyFile.Restrict(tmp);
         File.Move(tmp, FilePath, overwrite: true);
     }
 }

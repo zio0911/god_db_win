@@ -7,7 +7,12 @@ using static GodDB.Core.L10n;
 
 namespace GodDB.Core.Platform;
 
-public enum SshTunnelErrorKind { NoFreePort, Exited, Timeout, SshNotFound }
+public enum SshTunnelErrorKind
+{
+    NoFreePort, Exited, Timeout, SshNotFound,
+    /// 호스트 · 사용자 이름이 '-' 로 시작하거나 공백이 들어 있음 (ssh 옵션으로 읽힐 수 있어 거절, #197)
+    InvalidValue,
+}
 
 public sealed class SshTunnelException : Exception
 {
@@ -26,6 +31,7 @@ public sealed class SshTunnelException : Exception
         SshTunnelErrorKind.NoFreePort => Tr("로컬 포트를 확보하지 못했어요."),
         SshTunnelErrorKind.Exited => Tr("SSH 터널 연결에 실패했어요.\n%@", detail),
         SshTunnelErrorKind.Timeout => Tr("SSH 터널이 15초 안에 열리지 않았어요."),
+        SshTunnelErrorKind.InvalidValue => Tr("SSH 호스트 · 사용자 이름에 쓸 수 없는 값이에요: %@ ('-' 로 시작하거나 공백 포함)", detail),
         // Windows 판에만 있는 문장 (Mac 은 /usr/bin/ssh 가 항상 있음)
         _ => Tr("ssh 프로그램을 찾지 못했어요. Windows 설정 > 시스템 > 선택적 기능에서 \"OpenSSH 클라이언트\"를 설치해 주세요."),
     };
@@ -51,29 +57,48 @@ public sealed class SshTunnel : IDisposable
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { foreach (var t in Live.Keys) t.Stop(); };
     }
 
+    /// ssh 에 넘기는 값 검사: '-' 로 시작하면 옵션으로 읽히고, 공백 · 줄바꿈은 정상 호스트에 없다 (#197)
+    public static void Validate(SshConfig config, string remoteHost)
+    {
+        foreach (var v in new[] { config.Host, config.Username, remoteHost })
+        {
+            if (v.Length == 0) continue;
+            if (v.StartsWith('-') || v.Any(char.IsWhiteSpace))
+                throw new SshTunnelException(SshTunnelErrorKind.InvalidValue, v);
+        }
+    }
+
     public SshTunnel(SshConfig config, string remoteHost, int remotePort)
     {
+        Validate(config, remoteHost);
         LocalPort = FindFreePort() ?? throw new SshTunnelException(SshTunnelErrorKind.NoFreePort);
         _config = config;
         _remoteHost = remoteHost;
         _remotePort = remotePort;
     }
 
-    public static List<string> Arguments(SshConfig config, int localPort, string remoteHost, int remotePort)
+    public static List<string> Arguments(SshConfig config, int localPort, string remoteHost, int remotePort,
+                                         string? knownHostsFile = null)
     {
         var args = new List<string>
         {
             "-N",
             "-o", "ExitOnForwardFailure=yes",
             "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
+        };
+        // 모르는 서버 · 바뀐 키는 거부 (처음 접속은 연결 전에 지문을 보여 주고 확인받는다 — F9-4)
+        args.AddRange(SshHostKeys.SshOptions(knownHostsFile));
+        args.AddRange(
+        [
             "-o", "ServerAliveInterval=30",
             "-o", "ConnectTimeout=10",
             "-p", config.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-L", $"127.0.0.1:{localPort}:{remoteHost}:{remotePort}",
-        };
+        ]);
         var key = ExpandTilde(config.KeyPath);
         if (key.Length > 0) args.AddRange(["-i", key, "-o", "IdentitiesOnly=yes"]);
+        // 옵션 끝 표시 — 호스트가 옵션으로 읽히지 않게 (#197)
+        args.Add("--");
         args.Add(config.Username.Length == 0 ? config.Host : $"{config.Username}@{config.Host}");
         return args;
     }
@@ -88,18 +113,22 @@ public sealed class SshTunnel : IDisposable
 
     /// 쓸 ssh 실행 파일. 못 찾으면 null.
     /// windows: %SystemRoot%\System32\OpenSSH\ssh.exe → PATH 의 ssh.exe / 그 밖: /usr/bin/ssh → PATH 의 ssh
-    public static string? FindSsh(bool windows, string? systemRoot, string? pathEnv, Func<string, bool> fileExists)
+    public static string? FindSsh(bool windows, string? systemRoot, string? pathEnv, Func<string, bool> fileExists) =>
+        FindTool("ssh", windows, systemRoot, pathEnv, fileExists);
+
+    /// OpenSSH 도구(ssh · ssh-keygen · ssh-keyscan) 실행 파일. ssh 와 같은 순서로 찾는다.
+    public static string? FindTool(string tool, bool windows, string? systemRoot, string? pathEnv, Func<string, bool> fileExists)
     {
         if (windows)
         {
             if (!string.IsNullOrEmpty(systemRoot))
             {
-                var builtIn = systemRoot.TrimEnd('\\') + @"\System32\OpenSSH\ssh.exe";
+                var builtIn = systemRoot.TrimEnd('\\') + @"\System32\OpenSSH\" + tool + ".exe";
                 if (fileExists(builtIn)) return builtIn;
             }
         }
-        else if (fileExists("/usr/bin/ssh")) return "/usr/bin/ssh";
-        var name = windows ? "ssh.exe" : "ssh";
+        else if (fileExists("/usr/bin/" + tool)) return "/usr/bin/" + tool;
+        var name = windows ? tool + ".exe" : tool;
         foreach (var dir in (pathEnv ?? "").Split(windows ? ';' : ':', StringSplitOptions.RemoveEmptyEntries))
         {
             // 검사하는 OS 의 경로 구분자로 잇는다 (테스트가 다른 OS 에서 돌아도 같은 결과)
@@ -110,7 +139,9 @@ public sealed class SshTunnel : IDisposable
         return null;
     }
 
-    public static string? FindSsh() => FindSsh(OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("SystemRoot"),
+    public static string? FindSsh() => FindTool("ssh");
+
+    public static string? FindTool(string tool) => FindTool(tool, OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("SystemRoot"),
         Environment.GetEnvironmentVariable("PATH"), File.Exists);
 
     /// ssh 를 실행하고 로컬 포트가 열릴 때까지 (최대 15초) 기다린다.
@@ -118,6 +149,9 @@ public sealed class SshTunnel : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var exe = FindSsh() ?? throw new SshTunnelException(SshTunnelErrorKind.SshNotFound);
+        // 연결 전에 known_hosts 에서 찾고, 없으면 키를 받아 확인 창용 오류를 던진다 (F9-4)
+        var config = _config;
+        await Task.Run(() => SshHostKeys.Check(config), ct);
         var psi = new ProcessStartInfo(exe)
         {
             UseShellExecute = false,
@@ -149,6 +183,16 @@ public sealed class SshTunnel : IDisposable
                     string msg;
                     lock (_stderr) msg = _stderr.ToString().Trim();
                     Stop();
+                    switch (SshHostKeys.Classify(msg))
+                    {
+                        case SshHostKeys.StderrKind.Changed:
+                            var resolved = await Task.Run(() => SshHostKeys.Resolve(config), CancellationToken.None);
+                            throw SshHostKeyException.Changed(config.Host, config.Port, resolved.Pattern);
+                        case SshHostKeys.StderrKind.Unknown:
+                            // 확인한 뒤 키가 바뀌었거나 다른 종류의 키만 알려진 경우 → 다시 받아 확인 창
+                            await Task.Run(() => SshHostKeys.Check(config), CancellationToken.None);
+                            break;
+                    }
                     throw new SshTunnelException(SshTunnelErrorKind.Exited,
                         msg.Length == 0 ? Tr("ssh 종료 코드 %@", p.ExitCode) : msg);
                 }

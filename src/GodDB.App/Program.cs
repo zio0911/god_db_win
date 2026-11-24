@@ -20,6 +20,17 @@ internal static class Program
             foreach (var r in reports) Console.WriteLine(AuditChain.Describe(r));
             return reports.Any(r => r.Status is AuditFileStatus.Broken or AuditFileStatus.Unlinked) ? 1 : 0;
         }
+        // 개발용: GodDB --export-table-spec-sample <out.xlsx> → 샘플 모델의 테이블 명세서를 저장하고 종료 (Mac 과 같음)
+        var spec = Array.IndexOf(args, "--export-table-spec-sample");
+        if (spec >= 0 && args.Length > spec + 1)
+        {
+            AttachToParentConsole();
+            var m = ModelingSample.Model();
+            var info = new TableSpecInfo(m.Name, Environment.UserName, Views.TableSpecExportWindow.Today());
+            try { File.WriteAllBytes(args[spec + 1], TableSpecExport.Data(m, info)); }
+            catch (Exception e) { Console.WriteLine(e.Message); return 1; }
+            return 0;
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         return 0;
     }

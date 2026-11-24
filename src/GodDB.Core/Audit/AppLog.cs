@@ -146,8 +146,14 @@ public static class ErrorText
         foreach (var f in Describers)
             if (f(error, raw) is { } custom) return custom;
 
+        // F9-3 · F9-4: 인증서 · SSH 호스트 키 (화면이 확인 창을 띄운다). 문구에 TLS 가 들어 있어 아래 TLS 추측보다 먼저 본다
+        if (error is Drivers.TlsCertificateException or Platform.SshHostKeyException) return new(error.Message, null, raw);
+        if (error is Drivers.GodDbException) return new(error.Message, null, raw);
+
         switch (error)
         {
+            case Drivers.DbConnectTimeoutException t:
+                return new(t.Message, Tr("네트워크(VPN) 연결이나 보안 그룹에서 이 IP가 허용돼 있는지 확인해 주세요."), raw);
             case MySqlException my when my.Number > 0 && my.Number < 2000:
                 // 서버가 돌려준 오류 (Mac: MySQLError.server)
                 return new($"[{my.Number}] {my.Message}", ServerHint(my.Number, my.Message), raw);

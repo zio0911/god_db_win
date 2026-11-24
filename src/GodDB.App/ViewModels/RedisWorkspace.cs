@@ -134,7 +134,8 @@ public partial class RedisWorkspace : ObservableObject
         _treeMode = Prefs.Get(TreeModeKey, true);
         _delimiter = Prefs.GetString(DelimiterKey) ?? ":";
         _autoRefreshSeconds = Math.Max(1, Prefs.Get(AutoRefreshSecondsKey, 5));
-        _workbench = Prefs.GetString(WorkbenchKey) ?? DefaultWorkbench;
+        // 접속마다 기억하는 Workbench 글은 암호화해서 설정에 둔다 (Mac 1.4.1: LocalDataCrypto)
+        _workbench = GodDB.Core.Platform.LocalDataCrypto.Shared.PrefsString(WorkbenchKey) ?? DefaultWorkbench;
     }
 
     public string Name => Session.Profile.Name;
@@ -567,7 +568,8 @@ public partial class RedisWorkspace : ObservableObject
             try { await Task.Delay(TimeSpan.FromSeconds(AutoRefreshSeconds), ct); }
             catch (OperationCanceledException) { return; }
             if (ct.IsCancellationRequested) return;
-            await RefreshAllAsync(quiet: true);
+            // 자동 새로고침은 사람이 쓴 것이 아니다 (운영 접속 자동 끊기의 마지막 사용 시각을 바꾸지 않음)
+            await RedisSession.RunPassiveAsync(() => RefreshAllAsync(quiet: true));
         }
     }
 
@@ -812,7 +814,7 @@ public partial class RedisWorkspace : ObservableObject
     /// Workbench 편집기 글 (접속마다 기억)
     [ObservableProperty] private string _workbench;
 
-    partial void OnWorkbenchChanged(string value) => Prefs.Set(WorkbenchKey, value);
+    partial void OnWorkbenchChanged(string value) => GodDB.Core.Platform.LocalDataCrypto.Shared.SetPrefsString(WorkbenchKey, value);
 
     /// 편집기 끝에 한 줄 넣기 (이전 명령 · 결과에서 다시 넣기)
     public void InsertIntoWorkbench(string command) =>

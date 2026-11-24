@@ -27,6 +27,7 @@ public sealed partial class DiagramAIPanel : Border
     private readonly Button _historyButton;
     private readonly Button _trashButton;
     private readonly Button _sendButton;
+    private readonly SymbolIcon _sendIcon;
     private bool _rebuildQueued;
 
     public DiagramAIPanel(AppState app, DiagramDoc doc, AiChat chat)
@@ -36,19 +37,18 @@ public sealed partial class DiagramAIPanel : Border
         Chat = chat;
         this.Bind(BackgroundProperty, this.GetResourceObservable("PanelBackground"));
 
-        _newButton = IconButton("＋💬", Tr("새 대화 (지금 대화는 기록에 남아요)"), Chat.StartNew);
-        _historyButton = IconButton("", Tr("이전 대화 (90일 보관)"), () => { });
-        _historyButton.Content = new GodDB.App.Controls.SymbolIcon(GodDB.App.Controls.Symbol.History);
+        _newButton = IconButton(Symbol.PlusBubble, Tr("새 대화 (지금 대화는 기록에 남아요)"), Chat.StartNew);
+        _historyButton = IconButton(Symbol.History, Tr("이전 대화 (90일 보관)"), () => { });
         _historyButton.Flyout = new MenuFlyout();
         ((MenuFlyout)_historyButton.Flyout).Opening += (_, _) => FillHistory((MenuFlyout)_historyButton.Flyout!);
-        _trashButton = IconButton("🗑", Tr("지금 대화 삭제"), () => Chat.Delete(Chat.ConversationId));
+        _trashButton = IconButton(Symbol.Trash, Tr("지금 대화 삭제"), () => Chat.Delete(Chat.ConversationId));
 
         var header = new DockPanel { Margin = new Thickness(10) };
         var buttons = Ui.HStack(2, _newButton, _historyButton, _trashButton);
         DockPanel.SetDock(buttons, Dock.Right);
         header.Children.Add(buttons);
         header.Children.Add(Ui.HStack(6,
-            new TextBlock { Text = Glyphs.Sparkles, Foreground = new SolidColorBrush(DiagramCanvas.Purple), VerticalAlignment = VerticalAlignment.Center },
+            new SymbolIcon(Symbol.Sparkles) { Width = 16, Height = 16, Foreground = new SolidColorBrush(DiagramCanvas.Purple), VerticalAlignment = VerticalAlignment.Center },
             new TextBlock { Text = Tr("AI 관계 분석"), Classes = { "headline" }, VerticalAlignment = VerticalAlignment.Center }));
 
         _scroll = new ScrollViewer { Content = _transcript, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
@@ -70,8 +70,9 @@ public sealed partial class DiagramAIPanel : Border
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Input.TextChanged += (_, _) => UpdateButtons();
-        _sendButton = IconButton("⬆", Tr("보내기"), () => { if (Chat.Running) Chat.Cancel(); else Send(); });
-        _sendButton.FontSize = 16;
+        _sendButton = IconButton(Symbol.SendCircle, Tr("보내기"), () => { if (Chat.Running) Chat.Cancel(); else Send(); });
+        _sendIcon = (SymbolIcon)_sendButton.Content!;
+        _sendIcon.Width = _sendIcon.Height = 18;
         _sendButton.VerticalAlignment = VerticalAlignment.Bottom;
         var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6 };
         inputRow.Children.Add(Input);
@@ -107,9 +108,9 @@ public sealed partial class DiagramAIPanel : Border
         return b;
     }
 
-    private static Button IconButton(string text, string tip, Action onClick)
+    private static Button IconButton(Symbol symbol, string tip, Action onClick)
     {
-        var b = new Button { Content = text, Classes = { "hover" } };
+        var b = new Button { Content = new SymbolIcon(symbol), Classes = { "hover" } };
         ToolTip.SetTip(b, tip);
         b.Click += (_, _) => onClick();
         return b;
@@ -123,7 +124,8 @@ public sealed partial class DiagramAIPanel : Border
     public void Send()
     {
         var q = Input.Text ?? "";
-        if (q.Trim().Length == 0 || Chat.Running) return;
+        // 답하는 중이면 그 답을 멈추고 새 글을 먼저 (Mac 1.4.3 #177)
+        if (q.Trim().Length == 0) return;
         Input.Text = "";
         Ask(q);
         Input.Focus();
@@ -179,7 +181,7 @@ public sealed partial class DiagramAIPanel : Border
         _newButton.IsEnabled = Chat.Messages.Count > 0;
         _trashButton.IsVisible = Chat.Messages.Count > 0;
         _trashButton.IsEnabled = !Chat.Running;
-        _sendButton.Content = Chat.Running ? "■" : "⬆";
+        _sendIcon.Symbol = Chat.Running ? Symbol.StopCircle : Symbol.SendCircle;
         ToolTip.SetTip(_sendButton, Chat.Running ? Tr("취소") : Tr("보내기"));
         _sendButton.IsEnabled = Chat.Running || (Input.Text ?? "").Trim().Length > 0;
     }
@@ -207,7 +209,7 @@ public sealed partial class DiagramAIPanel : Border
             new TextBlock { Text = Tr("다이어그램의 테이블 %@개 구조와 관계를 바탕으로 분석하고, 궁금한 점을 물어볼 수 있어요.", Doc.Tables.Count), TextWrapping = TextWrapping.Wrap, Classes = { "secondary" } });
         var start = new Button
         {
-            Content = Glyphs.Sparkles + " " + Tr("관계 분석 시작"),
+            Content = SymbolIcon.WithText(Symbol.Sparkles, Tr("관계 분석 시작")),
             Background = new SolidColorBrush(DiagramCanvas.Purple),
             Foreground = Brushes.White,
         };

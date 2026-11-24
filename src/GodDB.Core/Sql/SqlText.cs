@@ -12,7 +12,7 @@ public readonly record struct SqlStatement(string Sql, int Start, int End)
 /// 되돌리기 어려운 문장 종류 (실행 전에 한 번 더 확인한다)
 public enum SqlDanger { DeleteAll, UpdateAll, Truncate, Drop }
 
-/// SQL 문자열 처리 유틸 (구문 분리, 읽기전용 검사, LIMIT 자동 부여).
+/// SQL 문자열 처리 유틸 (구문 분리, 읽기전용 검사, LIMIT 자동 부여). 읽기전용 검사는 SqlText.ReadOnlyGuard.cs
 public static partial class SqlText
 {
     [GeneratedRegex(@"^[ \t]*GO([ \t]+\d+)?[ \t]*;?[ \t]*\r?$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
@@ -153,24 +153,6 @@ public static partial class SqlText
         int k = 0;
         while (k < cleaned.Length && char.IsLetter(cleaned[k])) k++;
         return cleaned[..k].ToUpperInvariant();
-    }
-
-    private static readonly HashSet<string> ReadOnlyKeywords = ["SELECT", "SHOW", "DESC", "DESCRIBE", "EXPLAIN", "USE", "WITH"];
-    private static readonly string[] WriteWords = ["INSERT", "UPDATE", "DELETE", "REPLACE", "DROP", "ALTER", "CREATE", "TRUNCATE", "RENAME", "GRANT", "REVOKE"];
-
-    [GeneratedRegex(@"\bINTO\s+(OUT|DUMP)FILE\b")] private static partial Regex IntoOutfile();
-
-    /// 읽기전용 접속에서 실행 가능한 구문인지 판별한다.
-    public static bool IsReadOnly(string sql)
-    {
-        var kw = FirstKeyword(sql);
-        if (!ReadOnlyKeywords.Contains(kw)) return false;
-        var upper = StripComments(sql).ToUpperInvariant();
-        if (IntoOutfile().IsMatch(upper)) return false;
-        if (kw == "WITH")
-            foreach (var w in WriteWords)
-                if (Regex.IsMatch(upper, $@"\b{w}\b")) return false;
-        return true;
     }
 
     /// WHERE 없는 DELETE / UPDATE, TRUNCATE, DROP 이면 그 종류를 돌려준다.

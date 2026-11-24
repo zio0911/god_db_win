@@ -28,7 +28,8 @@ public sealed partial class AppState
         r.Columns.Count == 0 ? (r.Message ?? Tr("실행 완료")) : Tr("%@행", r.Rows.Count) + (r.HasMore ? "+" : "");
 
     /// 선택된 탭에서 sql 실행. explain 이면 실행 계획을 보여준다.
-    public async Task RunAsync(string sql, bool explain = false)
+    /// rowLimitOverride: 이번 실행만 다른 행 수 제한 (ID 로 찾기 — 값 개수 이상)
+    public async Task RunAsync(string sql, bool explain = false, int? rowLimitOverride = null)
     {
         if (SelectedTab is not { } tab) return;
         var tabId = tab.Id;
@@ -40,8 +41,9 @@ public sealed partial class AppState
         tab.Running = true;
         ArmRunTimeout(tabId);
         tab.Error = null;
-        var streaming = RowLimit == 0;
-        var limit = streaming ? StreamPageSize : RowLimit;
+        var effectiveLimit = rowLimitOverride ?? RowLimit;
+        var streaming = effectiveLimit == 0;
+        var limit = streaming ? StreamPageSize : effectiveLimit;
         try
         {
             if (await SessionForAsync(tab) is not { } session)
@@ -486,7 +488,7 @@ public sealed partial class AppState
         await RefreshSchemaAsync(request.ProfileId);
     }
 
-    /// 튜닝 결과 등을 탭 편집기 끝에 덧붙인다.
+    /// AI 가 만든 SQL 등을 탭 편집기 끝에 덧붙인다.
     public void InsertIntoTab(Guid tabId, string sql, string label)
     {
         Update(tabId, t =>
@@ -497,7 +499,6 @@ public sealed partial class AppState
             t.Text = text;
         });
         SelectTab(tabId);
-        TuningJob = null;
     }
 
     public void SelectResult(int index, Guid tabId)
@@ -536,14 +537,14 @@ public sealed partial class AppState
     // MARK: - 쿼리 취소 · 실행 시간 제한
 
     /// 설정 > 쿼리 > 실행 시간 제한 (초, 0 이면 없음)
-    public const string QueryTimeoutKey = "queryTimeoutSeconds";
+    public const string QueryTimeoutKey = QueryTimeLimit.Key;
 
     /// 실행 시작을 기록하고, 제한 시간이 있으면 넘었을 때 취소한다
     public void ArmRunTimeout(Guid tabId)
     {
         var started = DateTime.Now;
         Update(tabId, t => t.RunStarted = started);
-        var seconds = Prefs.Get(QueryTimeoutKey, 0);
+        var seconds = QueryTimeLimit.Seconds;
         if (seconds <= 0) return;
         Fire(async () =>
         {
@@ -581,6 +582,7 @@ public sealed partial class AppState
         if (Profile(tab.ProfileId)?.ReadOnly == true) return (null, new GodDbException(DbErrorKind.ReadOnlyBlocked));
         if (result.TruncatedCells > 0) return (null, new ResultEditingException(ResultEditingError.ValuesTruncated));
         var tables = Connections.TryGetValue(tab.ProfileId, out var c) ? c.Tables : [];
+        if (c?.Session?.Dialect.IsRedshift() == true) return (null, new ResultEditingException(ResultEditingError.KeysNotEnforced));
         try { return (ResultEditing.Target(sql, [.. result.Columns.Select(x => x.Name)], tables), null); }
         catch (Exception e) { return (null, e); }
     }
@@ -612,7 +614,10 @@ public sealed partial class AppState
             || !Connections.TryGetValue(tab.ProfileId, out var info) || info.Session is not { } session) return;
         var statements = ResultEditing.Statements(tab.Edits, target, result.Rows, session.Dialect);
         if (statements.Count == 0) return;
-        EditApply = new EditApplyRequest(tabId, statements);
+        EditApply = new EditApplyRequest(tabId, statements)
+        {
+            InvalidJsonColumns = JSONView.InvalidEdits(tab.Edits, target, [.. result.Columns.Select(c => c.Name)], result.Rows),
+        };
     }
 
     /// 트랜잭션으로 적용하고, 성공하면 같은 페이지를 다시 읽는다.

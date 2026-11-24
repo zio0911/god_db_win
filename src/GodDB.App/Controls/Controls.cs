@@ -61,7 +61,12 @@ public class KindBadge : Border
     public static readonly StyledProperty<double> SizeProperty =
         AvaloniaProperty.Register<KindBadge, double>(nameof(Size), 16);
 
+    /// PostgreSQL 접속 중 Amazon Redshift (보라 원통 아이콘)
+    public static readonly StyledProperty<bool> RedshiftProperty =
+        AvaloniaProperty.Register<KindBadge, bool>(nameof(Redshift));
+
     public DatabaseKind Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
+    public bool Redshift { get => GetValue(RedshiftProperty); set => SetValue(RedshiftProperty, value); }
     public double Size { get => GetValue(SizeProperty); set => SetValue(SizeProperty, value); }
 
     private readonly Avalonia.Controls.Shapes.Path _logo = new() { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -83,7 +88,7 @@ public class KindBadge : Border
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == KindProperty || change.Property == SizeProperty) Refresh();
+        if (change.Property == KindProperty || change.Property == SizeProperty || change.Property == RedshiftProperty) Refresh();
     }
 
     public static Color ColorOf(DatabaseKind kind) => BrandLogo.ColorOf(kind);
@@ -91,7 +96,9 @@ public class KindBadge : Border
     private void Refresh()
     {
         Width = Height = Size;
-        if (Kind == DatabaseKind.Postgres) Child = BrandLogo.PostgresIcon(Size);
+        var redshift = Redshift && Kind == DatabaseKind.Postgres;
+        if (redshift) Child = RedshiftIcon.Create(Size);
+        else if (Kind == DatabaseKind.Postgres) Child = BrandLogo.PostgresIcon(Size);
         else if (Kind == DatabaseKind.Mssql) Child = BrandLogo.MssqlIcon(Size);
         else
         {
@@ -100,8 +107,9 @@ public class KindBadge : Border
             _logo.Fill = new SolidColorBrush(ColorOf(Kind));
             Child = _logo;
         }
-        ToolTip.SetTip(this, Kind.Title());
-        Avalonia.Automation.AutomationProperties.SetName(this, Kind.Title());
+        var title = redshift ? "Redshift" : Kind.Title();
+        ToolTip.SetTip(this, title);
+        Avalonia.Automation.AutomationProperties.SetName(this, title);
     }
 }
 

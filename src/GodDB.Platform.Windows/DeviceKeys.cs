@@ -50,22 +50,26 @@ public sealed class TpmDeviceSigner : IDeviceSigner
 
 /// 기기 키 파일을 DPAPI(현재 사용자)로 잠가 보관한다. 다른 계정이나 다른 PC 로 파일을 복사하면 풀 수 없다.
 /// (Mac: 이 기기 전용 키체인 항목). 잠그지 않은 예전 파일과 섞이지 않게 계정 이름에 `.dpapi` 를 붙인다.
+/// 로컬 데이터 암호화 키(<see cref="LocalDataCrypto"/>)도 같은 방식으로, 다른 엔트로피(<see cref="LocalDataEntropy"/>)로 둔다.
 [SupportedOSPlatform("windows")]
-public sealed class DpapiDeviceKeyStore(IDeviceKeyStore? inner = null) : IDeviceKeyStore
+public sealed class DpapiDeviceKeyStore(IDeviceKeyStore? inner = null, byte[]? entropy = null) : IDeviceKeyStore
 {
     private static readonly byte[] Entropy = "GodDB audit device key"u8.ToArray();
+    /// 로컬 데이터(히스토리 · 탭 · 저장 쿼리 · AI 대화) 키용
+    public static readonly byte[] LocalDataEntropy = "GodDB local data key"u8.ToArray();
     private readonly IDeviceKeyStore _inner = inner ?? new FileDeviceKeyStore();
+    private readonly byte[] _entropy = entropy ?? Entropy;
 
     public byte[]? Load(string account)
     {
         if (_inner.Load(account + ".dpapi") is not { } sealedData) return null;
-        try { return ProtectedData.Unprotect(sealedData, Entropy, DataProtectionScope.CurrentUser); }
+        try { return ProtectedData.Unprotect(sealedData, _entropy, DataProtectionScope.CurrentUser); }
         catch (CryptographicException) { return null; }
     }
 
     public bool Save(string account, byte[] data)
     {
-        try { return _inner.Save(account + ".dpapi", ProtectedData.Protect(data, Entropy, DataProtectionScope.CurrentUser)); }
+        try { return _inner.Save(account + ".dpapi", ProtectedData.Protect(data, _entropy, DataProtectionScope.CurrentUser)); }
         catch (CryptographicException) { return false; }
     }
 }

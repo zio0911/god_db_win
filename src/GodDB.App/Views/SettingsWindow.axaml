@@ -42,7 +42,17 @@
                 <TextBlock Text="{l:T 실행 시간 제한}"/>
                 <ComboBox Grid.Column="1" ItemsSource="{Binding TimeoutLabels}" SelectedIndex="{Binding QueryTimeoutIndex}" MinWidth="160"/>
               </Grid>
-              <TextBlock Classes="caption" Text="{l:T '시간을 넘기면 쿼리를 자동으로 취소해요. 실행 중에는 언제든 [취소] 또는 Ctrl+. 로 멈출 수 있어요.'}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '시간을 넘기면 쿼리를 자동으로 취소해요. 실행 중에는 언제든 [취소] 또는 Ctrl+. 로 멈출 수 있어요. PostgreSQL · MySQL 은 서버에도 같은 제한을 걸어요 (다음 연결부터, MySQL 은 SELECT 만).'}"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="groupTitle" Text="{l:T 편집기}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <CheckBox x:Name="LintBox" Content="{l:T 쿼리 오류에 빨간 밑줄}" IsChecked="{Binding LintEnabled}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '없는 컬럼, 빠진 콤마, 닫히지 않은 괄호 · 따옴표, 키워드 오타를 입력하는 동안 표시해요. 밑줄에 마우스를 올리면 이유가 나와요.'}"/>
+              <CheckBox x:Name="LintServerBox" Content="{l:T DB 에 검사 요청}" IsChecked="{Binding LintServer}" IsEnabled="{Binding LintEnabled}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '입력을 1초 멈추면 커서가 있는 구문을 DB 에 실행 없이 검사만 맡겨요 (MySQL · PostgreSQL PREPARE, SQL Server sp_describe_first_result_set). 실행 중이거나 PostgreSQL 트랜잭션이 열려 있으면 묻지 않아요.'}"/>
             </StackPanel>
           </Border>
 
@@ -51,6 +61,23 @@
             <StackPanel Spacing="6">
               <CheckBox x:Name="ConfirmDangerousBox" Content="{l:T 위험한 명령 실행 전 확인}" IsChecked="{Binding ConfirmDangerous}"/>
               <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T 'WHERE 없는 DELETE · UPDATE, TRUNCATE, DROP, Redis 의 FLUSHALL · FLUSHDB · KEYS 등을 실행하기 전에 한 번 더 물어봐요. 운영 접속에서 데이터를 바꾸는 확인은 이 설정과 관계없이 항상 떠요.'}"/>
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 운영 접속 자동 끊기}"/>
+                <ComboBox Grid.Column="1" x:Name="ProdIdleBox" ItemsSource="{Binding ProdIdleLabels}" SelectedIndex="{Binding ProdIdleIndex}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '운영 접속을 이 시간 동안 쓰지 않으면 연결을 끊어요. 커밋하지 않은 변경이 있으면 끊지 않고 알려 줘요. 쿼리 탭은 남고, 다시 실행하면 다시 연결해요.'}"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="groupTitle" Text="{l:T 히스토리}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <Grid Classes="row" ColumnDefinitions="160,*">
+                <TextBlock Text="{l:T 히스토리 보관 기간}"/>
+                <ComboBox x:Name="HistoryKeepDaysBox" Grid.Column="1" ItemsSource="{Binding HistoryKeepDaysLabels}"
+                          SelectedIndex="{Binding HistoryKeepDaysIndex}" MinWidth="160"/>
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding HistoryKeepNote}"/>
             </StackPanel>
           </Border>
 
@@ -117,8 +144,6 @@
             <StackPanel Spacing="6">
               <CheckBox Content="{l:T AI 어시스턴트 사용}" IsChecked="{Binding AssistantEnabled}"/>
               <TextBlock Classes="caption" Text="{l:T '끄면 도구 막대의 ✨ AI 어시스턴트 버튼과 오른쪽 패널이 사라져요.'}"/>
-              <CheckBox Content="{l:T 쿼리 튜닝 사용}" IsChecked="{Binding TuningEnabled}"/>
-              <TextBlock Classes="caption" Text="{l:T '쿼리 탭의 튜닝 버튼(Ctrl+Alt+T)을 누르면 쿼리·테이블 구조·인덱스·실행 계획을 로컬 Ollama 에 보내 개선 SQL 과 추천 인덱스를 받아요. 끄면 튜닝 버튼이 사라져요.'}"/>
             </StackPanel>
           </Border>
           <TextBlock Classes="groupTitle" Text="Ollama"/>
@@ -128,7 +153,10 @@
                 <TextBlock Text="{l:T Ollama 주소}"/>
                 <TextBox Grid.Column="1" Text="{Binding OllamaUrl}" x:Name="UrlBox"/>
               </Grid>
-              <TextBlock Classes="caption" Text="{Binding NonLocalWarning}" IsVisible="{Binding IsNonLocal}" Foreground="{DynamicResource OrangeBrush}"/>
+              <StackPanel Spacing="4" IsVisible="{Binding IsNonLocal}">
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding NonLocalWarning}" Foreground="{DynamicResource RedBrush}"/>
+                <Button Content="{l:T '기본값(localhost)으로'}" Command="{Binding ResetOllamaUrlCommand}" FontSize="11" Padding="6,2"/>
+              </StackPanel>
               <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                 <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"/>
                 <c:ActivitySpinner Grid.Column="1" Width="16" Height="16" VerticalAlignment="Center" IsVisible="{Binding Checking}"/>
@@ -146,10 +174,21 @@
                 <TextBlock Text="{l:T 모델}"/>
                 <ComboBox Grid.Column="1" ItemsSource="{Binding ModelChoices}" SelectedItem="{Binding SelectedModel}" HorizontalAlignment="Stretch"/>
               </Grid>
-              <TextBlock Classes="caption" Text="{Binding RecommendNote}"/>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="{l:T 모델 확인}" Command="{Binding CheckModelCommand}" IsEnabled="{Binding CanCheckModel}"/>
+                <c:ActivitySpinner Width="16" Height="16" VerticalAlignment="Center" IsVisible="{Binding Probing}"/>
+                <SelectableTextBlock Text="{Binding ProbeText}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="420"
+                                     Foreground="{DynamicResource RedBrush}" IsVisible="{Binding ProbeFailed}"/>
+                <TextBlock Text="{Binding ProbeText}" VerticalAlignment="Center" Foreground="{DynamicResource GreenBrush}" IsVisible="{Binding ProbeOk}"/>
+              </StackPanel>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding RecommendNote}"/>
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <SelectableTextBlock Text="{Binding PullCommandText}" Classes="caption mono" VerticalAlignment="Center"/>
                 <Button Content="{l:T 복사}" Command="{Binding CopyPullCommand}" FontSize="11" Padding="6,2"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <SelectableTextBlock Text="{Binding PullSmallCommandText}" Classes="caption mono" VerticalAlignment="Center"/>
+                <Button Content="{l:T 복사}" Command="{Binding CopyPullSmallCommand}" FontSize="11" Padding="6,2"/>
               </StackPanel>
             </StackPanel>
           </Border>

@@ -64,7 +64,11 @@ public abstract record ImportAction
 
 public static class ConnectionTransfer
 {
-    internal const int Rounds = 200_000;
+    /// PBKDF2-SHA256 반복 횟수 (OWASP 권장 60만 회). 1.4.2 까지는 20만 회 — 가져오기는 파일에 적힌 횟수를 쓴다
+    internal const int Rounds = 600_000;
+    /// 가져올 때 받아 주는 횟수 범위 (터무니없이 큰 값으로 앱을 오래 붙잡는 파일 거절)
+    internal const int MinAcceptedRounds = 10_000;
+    internal const int MaxAcceptedRounds = 5_000_000;
 
     /// 파일 JSON 설정 (camelCase, enum 은 소문자 문자열, 날짜는 초 단위 ISO 8601 — Swift JSONEncoder 와 같음)
     internal static readonly JsonSerializerOptions Json = new()
@@ -152,6 +156,13 @@ public static class ConnectionTransfer
     public static HashSet<Guid> DefaultSelection(IEnumerable<ConnectionProfile> incoming, IReadOnlyList<ConnectionProfile> existing) =>
         incoming.Where(p => Action(p, existing) is ImportAction.Add).Select(p => p.Id).ToHashSet();
 
+    /// 같은 ID 로 가져올 때 예전에 저장한 비밀번호를 계속 써도 되는지: 종류 · 호스트 · 포트 · 사용자 · SSH 경유가 같을 때만 (#197).
+    /// 다른 서버나 계정으로 바뀌었는데 옛 비밀번호를 보내지 않게, 아니면 지우고 처음 연결할 때 묻는다
+    public static bool SavedPasswordStillApplies(ConnectionProfile old, ConnectionProfile @new) =>
+        old.Kind == @new.Kind && string.Equals(old.Host, @new.Host, StringComparison.OrdinalIgnoreCase) && old.Port == @new.Port
+        && old.Username == @new.Username
+        && string.Equals(old.Ssh?.Host, @new.Ssh?.Host, StringComparison.OrdinalIgnoreCase) && old.Ssh?.Username == @new.Ssh?.Username;
+
     /// 가져온 접속을 기존 목록에 합친다. 같은 id 는 덮어쓰고, 새 접속은 뒤에 붙인다.
     /// 이름이 다른 접속과 겹치면 " (2)" 를 붙인다. 넘긴 목록의 항목은 바꾸지 않는다 (복사본을 넣는다).
     public static List<ConnectionProfile> Merge(IEnumerable<ConnectionProfile> incoming, IEnumerable<ConnectionProfile> existing)
@@ -222,7 +233,7 @@ public static class ConnectionTransfer
         var saved = savedPasswords.ToString(CultureInfo.InvariantCulture);
         return new LogEntry(LogLevel.Success, LogSource.App,
             Tr("접속 정보 %@개 가져옴 · %@", count, fileName) + (savedPasswords > 0 ? Tr(" · 비밀번호 %@개", saved) : ""),
-            Detail: string.Join("\n", incoming.Select(p => $"{p.Name} ({p.Kind.Title()} {p.Host}:{p.Port})")),
+            Detail: string.Join("\n", incoming.Select(p => $"{p.Name} ({p.TypeTitle} {p.Host}:{p.Port})")),
             Audit: new AuditRecord(AuditAction.Settings,
                 Result: $"접속 정보 {count}개 가져옴" + (savedPasswords > 0 ? $" · 비밀번호 {saved}개" : ""),
                 Statement: fileName + " · " + string.Join(", ", incoming.Select(p => p.Name))));
@@ -237,19 +248,19 @@ public static class ConnectionTransfer
     private const int NonceSize = 12;
     private const int TagSize = 16;
 
-    internal static ConnectionBundle.EncryptedPasswords Encrypt(byte[] plain, string passphrase)
+    internal static ConnectionBundle.EncryptedPasswords Encrypt(byte[] plain, string passphrase, int rounds = Rounds)
     {
         var salt = RandomNumberGenerator.GetBytes(16);
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
         var cipher = new byte[plain.Length];
         var tag = new byte[TagSize];
-        using (var aes = new AesGcm(Key(passphrase, salt, Rounds), TagSize))
+        using (var aes = new AesGcm(Key(passphrase, salt, rounds), TagSize))
             aes.Encrypt(nonce, plain, cipher, tag);
         // CryptoKit AES.GCM.SealedBox.combined = nonce ‖ ciphertext ‖ tag
         byte[] combined = [.. nonce, .. cipher, .. tag];
         return new ConnectionBundle.EncryptedPasswords
         {
-            Rounds = Rounds,
+            Rounds = rounds,
             Salt = Convert.ToBase64String(salt),
             Data = Convert.ToBase64String(combined),
         };
@@ -257,6 +268,8 @@ public static class ConnectionTransfer
 
     internal static byte[] Decrypt(ConnectionBundle.EncryptedPasswords enc, string passphrase)
     {
+        if (enc.Rounds is < MinAcceptedRounds or > MaxAcceptedRounds)
+            throw new ConnectionTransferException(ConnectionTransferErrorKind.NotGodDBFile);
         byte[] salt, data;
         try
         {

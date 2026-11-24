@@ -8,16 +8,20 @@ public class SshTunnelTests
     public void BuildsArguments()
     {
         var cfg = new SshConfig { Host = "bastion.example.com", Port = 2222, Username = "ec2-user", KeyPath = "" };
-        var args = SshTunnel.Arguments(cfg, 50000, "10.0.0.5", 6379);
+        var args = SshTunnel.Arguments(cfg, 50000, "10.0.0.5", 6379, knownHostsFile: "/tmp/goddb/known_hosts");
         Assert.Equal([
             "-N",
             "-o", "ExitOnForwardFailure=yes",
             "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
+            // 1.4.0: 모르는 서버 · 바뀐 키는 거부 (처음 접속은 연결 전에 지문을 확인받는다 — SSHHostKeysTests)
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", "UserKnownHostsFile=\"~/.ssh/known_hosts\" \"/tmp/goddb/known_hosts\"",
             "-o", "ServerAliveInterval=30",
             "-o", "ConnectTimeout=10",
             "-p", "2222",
             "-L", "127.0.0.1:50000:10.0.0.5:6379",
+            // 1.4.3: 옵션 끝 표시 (#197)
+            "--",
             "ec2-user@bastion.example.com",
         ], args);
     }

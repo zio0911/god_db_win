@@ -29,6 +29,8 @@ public sealed partial class MssqlDialect : SqlDialect
 
     /// SQL Server 는 세션 단위 읽기전용 설정이 없어서 앱 검사만 한다.
     public override string? ReadOnlySessionSql => null;
+    /// SQL Server 는 세션 단위 실행 시간 제한이 없다 (앱 쪽 제한만)
+    public override string? StatementTimeoutSql(int milliseconds) => null;
     public override string SessionIdSql => "SELECT @@SPID";
     /// SQL Server 는 쿼리만 멈추는 명령이 없어 세션을 끊는다 (DBSession 이 다시 연결한다)
     public override string CancelSql(int sessionId) => $"KILL {sessionId}";
@@ -216,6 +218,18 @@ public sealed partial class MssqlDialect : SqlDialect
         return string.Join("\n", output);
     }
 
+    /// 컬럼의 기본값 제약조건을 이름을 몰라도 지운다. 기본값 제약조건은 서버가 붙인 이름(DF__…)인 경우가 많다.
+    /// 쿼리 탭은 세미콜론으로 문장을 나누므로 세미콜론 없이 한 문장(한 배치)으로 만든다.
+    internal string DropDefaultSql(string t, string column)
+    {
+        var v = "@df_" + new string(column.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
+        var alter = $"ALTER TABLE {t} DROP CONSTRAINT ".Replace("'", "''");
+        return $"DECLARE {v} nvarchar(300) = (SELECT QUOTENAME(dc.name) FROM sys.default_constraints dc "
+             + "JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id "
+             + $"WHERE dc.parent_object_id = OBJECT_ID({QuoteString(t)}) AND c.name = {QuoteString(column)}) "
+             + $"IF {v} IS NOT NULL EXEC (N'{alter}' + {v});";
+    }
+
     private List<string> AlterColumn(string t, string table, ColumnMeta old, ColumnMeta @new)
     {
         var output = new List<string>();
@@ -223,8 +237,7 @@ public sealed partial class MssqlDialect : SqlDialect
             output.Add($"ALTER TABLE {t} ALTER COLUMN {QuoteIdent(@new.Name)} {@new.ColumnType} {(@new.Nullable ? "NULL" : "NOT NULL")};");
         if (old.DefaultValue != @new.DefaultValue)
         {
-            if (old.DefaultValue != null)
-                output.Add(Tr("-- 기존 기본값 제약조건을 먼저 지워야 해요: ALTER TABLE %@ DROP CONSTRAINT <기본값 제약조건 이름>;", t));
+            if (old.DefaultValue != null) output.Add(DropDefaultSql(t, @new.Name));
             if (@new.DefaultValue is string d)
                 output.Add($"ALTER TABLE {t} ADD DEFAULT {d} FOR {QuoteIdent(@new.Name)};");
         }

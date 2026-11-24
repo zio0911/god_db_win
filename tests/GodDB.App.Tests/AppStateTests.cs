@@ -216,7 +216,9 @@ public class PasswordFlowTests
         app.SubmitPassword("pw1", save: true, p);
         Assert.Null(app.PasswordPrompt);
         Assert.Equal("pw1", env.Secrets.GetPassword(p.Id));
-        Assert.Equal("pw1", app.SessionPasswords[p.Id]);
+        // 1.4.1: 보관소에 저장했으면 메모리에 따로 두지 않는다 (필요할 때마다 보관소에서 읽음)
+        Assert.False(app.SessionPasswords.ContainsKey(p.Id));
+        Assert.Equal("pw1", app.Password(app.Profiles.Single()));
         Assert.True(app.Profiles.Single().SavePassword);
         Assert.True(env.Store.Load().Single().SavePassword);
     });

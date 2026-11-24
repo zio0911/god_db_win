@@ -44,6 +44,50 @@ public enum Symbol
     ListIndent,
     /// list.bullet (목록)
     List,
+    /// bookmark (저장 쿼리)
+    Bookmark,
+    /// square.and.arrow.up (내보내기 · 올리기)
+    Upload,
+    /// trash (지우기)
+    Trash,
+    /// doc.on.doc (복사)
+    Copy,
+    /// checkmark (복사했어요)
+    Checkmark,
+    /// plus.bubble (새 대화)
+    PlusBubble,
+    /// arrow.up.circle.fill (보내기)
+    SendCircle,
+    /// stop.circle.fill (멈춤)
+    StopCircle,
+    /// wand.and.stars (물리명 적용)
+    Wand,
+    /// hand.thumbsup (맞아요)
+    ThumbsUp,
+    /// hand.thumbsdown (아니에요)
+    ThumbsDown,
+    /// wifi.exclamationmark (목록을 못 가져옴)
+    WifiExclamation,
+    /// link (단축키 연결)
+    Link,
+    /// magnifyingglass (찾기)
+    Magnifier,
+    /// folder (그룹 고르기)
+    Folder,
+    /// folder.fill (그룹 머리)
+    FolderFill,
+    /// pin.fill (고정)
+    Pin,
+    /// eye (뷰)
+    Eye,
+    /// cylinder.split.1x2 (데이터베이스)
+    Cylinder,
+    /// bolt (트리거 · 자주 쓰는 질문)
+    Bolt,
+    /// gearshape (프로시저)
+    Gear,
+    /// function (함수)
+    Function,
 }
 
 public sealed class SymbolIcon : Control
@@ -251,6 +295,251 @@ public sealed class SymbolIcon : Control
                     ctx.DrawEllipse(brush, null, P(xs[i], ys[i]), 1.25 * k, 1.25 * k);
                     ctx.DrawLine(thin, P(xs[i] + 2.8, ys[i]), P(14.5, ys[i]));
                 }
+                break;
+            }
+            case Symbol.Bookmark:
+                // 위가 네모, 아래가 V 로 파인 책갈피 (선)
+                ctx.DrawGeometry(null, thin, Poly((3.5, 1.8), (12.5, 1.8), (12.5, 14.5), (8, 10.8), (3.5, 14.5)));
+                break;
+            case Symbol.Upload:
+            {
+                // 쟁반 + 위 화살표
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(P(5, 6.5), false); c.LineTo(P(2.5, 6.5)); c.LineTo(P(2.5, 14.5)); c.LineTo(P(13.5, 14.5)); c.LineTo(P(13.5, 6.5)); c.LineTo(P(11, 6.5));
+                    c.EndFigure(false);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawLine(thin, P(8, 1.4), P(8, 10.5));
+                ctx.DrawLine(thin, P(5.2, 4.2), P(8, 1.4)); ctx.DrawLine(thin, P(10.8, 4.2), P(8, 1.4));
+                break;
+            }
+            case Symbol.Trash:
+            {
+                ctx.DrawLine(thin, P(2, 3.8), P(14, 3.8));
+                ctx.DrawGeometry(null, thin, Poly((6, 3.8), (6.5, 1.8), (9.5, 1.8), (10, 3.8)));
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(P(3.6, 3.8), false); c.LineTo(P(4.5, 14.5)); c.LineTo(P(11.5, 14.5)); c.LineTo(P(12.4, 3.8));
+                    c.EndFigure(false);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawLine(thin, P(6.5, 6.5), P(6.7, 12)); ctx.DrawLine(thin, P(9.5, 6.5), P(9.3, 12));
+                break;
+            }
+            case Symbol.Copy:
+                // 뒤 문서 (모서리만) + 앞 문서
+                ctx.DrawRectangle(null, thin, new Rect(P(5.5, 5), P(14, 14.8)), 1.5 * k, 1.5 * k);
+                ctx.DrawLine(thin, P(2.2, 11), P(2.2, 2.6)); ctx.DrawLine(thin, P(2.2, 2.6), P(3.2, 1.6)); ctx.DrawLine(thin, P(3.2, 1.6), P(10, 1.6));
+                ctx.DrawLine(thin, P(7.8, 8.5), P(11.7, 8.5)); ctx.DrawLine(thin, P(7.8, 11.2), P(11.7, 11.2));
+                break;
+            case Symbol.Checkmark:
+            {
+                var bold = new Pen(brush, Math.Max(1, 2 * k), lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+                var g = new StreamGeometry();
+                using (var c = g.Open()) { c.BeginFigure(P(2.5, 8.5), false); c.LineTo(P(6.3, 12.5)); c.LineTo(P(13.5, 3.5)); c.EndFigure(false); }
+                ctx.DrawGeometry(null, bold, g);
+                break;
+            }
+            case Symbol.PlusBubble:
+            {
+                // 말풍선 + 가운데 더하기
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(P(4, 12.2), false);
+                    c.ArcTo(P(8, 1.6), new Size(6.5 * k, 5.3 * k), 0, false, SweepDirection.Clockwise);
+                    c.ArcTo(P(8, 12.2), new Size(6.5 * k, 5.3 * k), 0, false, SweepDirection.Clockwise);
+                    c.LineTo(P(5.5, 12));
+                    c.LineTo(P(2.2, 14.6));
+                    c.LineTo(P(4, 12.2));
+                    c.EndFigure(false);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawLine(thin, P(8, 4.4), P(8, 9.4)); ctx.DrawLine(thin, P(5.5, 6.9), P(10.5, 6.9));
+                break;
+            }
+            case Symbol.SendCircle:
+            case Symbol.StopCircle:
+            {
+                // 칠한 원 + 흰 글자 (위 화살표 / 네모)
+                ctx.DrawEllipse(brush, null, P(8, 8), 7 * k, 7 * k);
+                var white = new Pen(Brushes.White, Math.Max(1, 1.8 * k), lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+                if (Symbol == Symbol.StopCircle)
+                    ctx.DrawRectangle(Brushes.White, null, new Rect(P(5.5, 5.5), P(10.5, 10.5)), 1 * k, 1 * k);
+                else
+                {
+                    ctx.DrawLine(white, P(8, 4.3), P(8, 11.8));
+                    ctx.DrawLine(white, P(4.9, 7.3), P(8, 4.3)); ctx.DrawLine(white, P(11.1, 7.3), P(8, 4.3));
+                }
+                break;
+            }
+            case Symbol.Wand:
+            {
+                var bold = new Pen(brush, Math.Max(1, 2 * k), lineCap: PenLineCap.Round);
+                ctx.DrawLine(bold, P(2, 14.2), P(10, 6.2));
+                Star(12.3, 3.7, 3);
+                Star(5.3, 3.2, 1.8);
+                Star(13, 10.6, 1.8);
+                break;
+            }
+            case Symbol.ThumbsUp:
+            case Symbol.ThumbsDown:
+            {
+                // 엄지 손 (선) — 아래 방향은 위아래를 뒤집는다
+                bool down = Symbol == Symbol.ThumbsDown;
+                Point Q(double x, double y) => down ? P(x, 16 - y) : P(x, y);
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(Q(1.8, 7.2), true); c.LineTo(Q(4.4, 7.2)); c.LineTo(Q(4.4, 14.3)); c.LineTo(Q(1.8, 14.3)); c.EndFigure(true);
+                    c.BeginFigure(Q(4.4, 7.4), false);
+                    c.LineTo(Q(7.2, 3.6)); c.LineTo(Q(7.6, 1.7));
+                    c.QuadraticBezierTo(Q(9.8, 1.6), Q(9.3, 4.4));
+                    c.LineTo(Q(8.8, 6.4)); c.LineTo(Q(12.9, 6.4));
+                    c.QuadraticBezierTo(Q(14.6, 6.6), Q(14.1, 8.4));
+                    c.LineTo(Q(12.9, 13));
+                    c.QuadraticBezierTo(Q(12.5, 14.3), Q(11.2, 14.3));
+                    c.LineTo(Q(4.4, 14.3));
+                    c.EndFigure(false);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                break;
+            }
+            case Symbol.WifiExclamation:
+            {
+                // 와이파이 부채꼴 (왼쪽) + 느낌표 (오른쪽)
+                Point C = P(6.5, 13.5);
+                void Arc(double r)
+                {
+                    var g = new StreamGeometry();
+                    using (var c = g.Open())
+                    {
+                        double a0 = -135 * Math.PI / 180, a1 = -45 * Math.PI / 180;
+                        c.BeginFigure(P(6.5 + r * Math.Cos(a0), 13.5 + r * Math.Sin(a0)), false);
+                        c.ArcTo(P(6.5 + r * Math.Cos(a1), 13.5 + r * Math.Sin(a1)), new Size(r * k, r * k), 0, false, SweepDirection.Clockwise);
+                        c.EndFigure(false);
+                    }
+                    ctx.DrawGeometry(null, thin, g);
+                }
+                Arc(3.6); Arc(6.6); Arc(9.6);
+                ctx.DrawEllipse(brush, null, C, 1.2 * k, 1.2 * k);
+                ctx.DrawLine(thin, P(14.2, 5.5), P(14.2, 11));
+                ctx.DrawEllipse(brush, null, P(14.2, 13.6), 1 * k, 1 * k);
+                break;
+            }
+            case Symbol.Link:
+            {
+                // 비스듬한 고리 두 개
+                void Ring(double cx, double cy)
+                {
+                    var g = new StreamGeometry();
+                    using (var c = g.Open())
+                    {
+                        // 45° 기운 둥근 막대 (가로 7, 세로 4)
+                        double cos = Math.Cos(-Math.PI / 4), sin = Math.Sin(-Math.PI / 4);
+                        Point R(double x, double y) => P(cx + x * cos - y * sin, cy + x * sin + y * cos);
+                        c.BeginFigure(R(-2, -2.1), false);
+                        c.LineTo(R(2, -2.1));
+                        c.ArcTo(R(2, 2.1), new Size(2.1 * k, 2.1 * k), 0, false, SweepDirection.Clockwise);
+                        c.LineTo(R(-2, 2.1));
+                        c.ArcTo(R(-2, -2.1), new Size(2.1 * k, 2.1 * k), 0, false, SweepDirection.Clockwise);
+                        c.EndFigure(true);
+                    }
+                    ctx.DrawGeometry(null, thin, g);
+                }
+                Ring(5.6, 10.4); Ring(10.4, 5.6);
+                break;
+            }
+            case Symbol.Magnifier:
+                ctx.DrawEllipse(null, thin, P(6.8, 6.8), 4.8 * k, 4.8 * k);
+                ctx.DrawLine(new Pen(brush, Math.Max(1, 2 * k), lineCap: PenLineCap.Round), P(10.4, 10.4), P(14.3, 14.3));
+                break;
+            case Symbol.Folder:
+            case Symbol.FolderFill:
+            {
+                var g = Poly((1.5, 3), (6, 3), (7.5, 4.8), (14.5, 4.8), (14.5, 13.5), (1.5, 13.5));
+                if (Symbol == Symbol.FolderFill) ctx.DrawGeometry(brush, null, g);
+                else { ctx.DrawGeometry(null, thin, g); ctx.DrawLine(thin, P(1.5, 6.8), P(14.5, 6.8)); }
+                break;
+            }
+            case Symbol.Pin:
+                // 압정: 머리 (칠함) + 바늘
+                ctx.DrawGeometry(brush, null, Poly((5, 1.5), (11, 1.5), (10, 3), (10, 6.5), (12.5, 9.5), (3.5, 9.5), (6, 6.5), (6, 3)));
+                ctx.DrawLine(thin, P(8, 9.5), P(8, 15));
+                break;
+            case Symbol.Eye:
+            {
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(P(1, 8), true);
+                    c.QuadraticBezierTo(P(8, -0.5), P(15, 8));
+                    c.QuadraticBezierTo(P(8, 16.5), P(1, 8));
+                    c.EndFigure(true);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawEllipse(brush, null, P(8, 8), 2.4 * k, 2.4 * k);
+                break;
+            }
+            case Symbol.Cylinder:
+            {
+                // 위 타원 + 옆선 + 가운데 · 아래 반 타원
+                ctx.DrawEllipse(null, thin, P(8, 3.3), 5.5 * k, 1.9 * k);
+                ctx.DrawLine(thin, P(2.5, 3.3), P(2.5, 12.7)); ctx.DrawLine(thin, P(13.5, 3.3), P(13.5, 12.7));
+                foreach (var y in new[] { 8.0, 12.7 })
+                {
+                    var g = new StreamGeometry();
+                    using (var c = g.Open())
+                    {
+                        c.BeginFigure(P(2.5, y), false);
+                        c.ArcTo(P(13.5, y), new Size(5.5 * k, 1.9 * k), 0, false, SweepDirection.CounterClockwise);
+                        c.EndFigure(false);
+                    }
+                    ctx.DrawGeometry(null, thin, g);
+                }
+                break;
+            }
+            case Symbol.Bolt:
+                ctx.DrawGeometry(null, thin, Poly((9.5, 1.2), (3, 9.2), (7.6, 9.2), (6.5, 14.8), (13, 6.8), (8.4, 6.8)));
+                break;
+            case Symbol.Gear:
+            {
+                // 톱니 8개 + 가운데 구멍
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    const int teeth = 8;
+                    for (int i = 0; i < teeth * 4; i++)
+                    {
+                        double a = (i / (teeth * 4.0)) * 2 * Math.PI - Math.PI / 2;
+                        double r = (i % 4) is 0 or 1 ? 7 : 5.3;
+                        var pt = P(8 + r * Math.Cos(a), 8 + r * Math.Sin(a));
+                        if (i == 0) c.BeginFigure(pt, false); else c.LineTo(pt);
+                    }
+                    c.EndFigure(true);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawEllipse(null, thin, P(8, 8), 2.2 * k, 2.2 * k);
+                break;
+            }
+            case Symbol.Function:
+            {
+                // 이탤릭 f + x
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(P(9.5, 2.2), false);
+                    c.QuadraticBezierTo(P(7.2, 1.2), P(6.8, 4.5));
+                    c.LineTo(P(5.6, 12.5));
+                    c.QuadraticBezierTo(P(5.1, 15.2), P(2.6, 14.2));
+                    c.EndFigure(false);
+                }
+                ctx.DrawGeometry(null, thin, g);
+                ctx.DrawLine(thin, P(4, 6.5), P(9, 6.5));
+                ctx.DrawLine(thin, P(10, 8), P(14.5, 13)); ctx.DrawLine(thin, P(14.5, 8), P(10, 13));
                 break;
             }
             case Symbol.Download:

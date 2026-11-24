@@ -8,9 +8,34 @@ namespace GodDB.Core.Drivers;
 public sealed class MySqlDriver : IDbDriver
 {
     private readonly MySqlConnection _conn;
-    private MySqlDriver(MySqlConnection conn) => _conn = conn;
+    public TlsStatus TlsStatus { get; }
 
-    public static Task<MySqlDriver> ConnectAsync(DriverEndpoint e, CancellationToken ct = default) =>
+    private MySqlDriver(MySqlConnection conn, TlsStatus tlsStatus)
+    {
+        _conn = conn;
+        TlsStatus = tlsStatus;
+    }
+
+    public static async Task<MySqlDriver> ConnectAsync(DriverEndpoint e, CancellationToken ct = default)
+    {
+        var verifier = e.UseTLS && e.Tls.Verify ? new TlsVerifier(e.Tls) : null;
+        try
+        {
+            var conn = await OpenAsync(e, verifier, ct);
+            return new MySqlDriver(conn, e.UseTLS ? verifier?.Status ?? TlsStatus.Unchecked : TlsStatus.Off);
+        }
+        catch (Exception ex) when (verifier?.Failure is { } failure && ex is not OperationCanceledException)
+        {
+            // 인증서 확인에서 거부했으면 그 오류(인증서 정보 포함)로 — 화면이 확인 창을 띄운다
+            throw failure;
+        }
+        catch (MySqlException me) when (e.UseTLS && me.Message.Contains("does not support SSL", StringComparison.OrdinalIgnoreCase))
+        {
+            throw TlsCertificateException.ServerNoTls();
+        }
+    }
+
+    private static Task<MySqlConnection> OpenAsync(DriverEndpoint e, TlsVerifier? verifier, CancellationToken ct) =>
         DriverUtil.TryEachAsync(e.Host, async ip =>
         {
             var b = new MySqlConnectionStringBuilder
@@ -20,7 +45,8 @@ public sealed class MySqlDriver : IDbDriver
                 UserID = e.Username,
                 Password = e.Password ?? "",
                 Database = e.Database,
-                // 터널 경유 시 호스트명이 127.0.0.1 이 되어 인증서 검증이 불가하므로 암호화만 사용한다 (Required = 검증 안 함)
+                // Required: TLS 를 켜면 서버가 TLS 를 안 해도 평문으로 내려가지 않는다 (Mac requireTLS 와 같음).
+                // 인증서는 아래 콜백(TlsVerifier)이 판정한다. 콜백이 없으면(확인 끔) 암호화만 한다.
                 SslMode = e.UseTLS ? MySqlSslMode.Required : MySqlSslMode.None,
                 Pooling = false,
                 ConnectionTimeout = (uint)e.ConnectTimeoutSeconds,
@@ -34,6 +60,7 @@ public sealed class MySqlDriver : IDbDriver
                 ApplicationName = "GodDB",
             };
             var conn = new MySqlConnection(b.ConnectionString);
+            if (verifier != null) conn.RemoteCertificateValidationCallback = verifier.Callback;
             try { await conn.OpenAsync(ct); }
             catch (MySqlException me) when (me.ErrorCode == MySqlErrorCode.UnableToConnectToHost)
             {
@@ -44,7 +71,7 @@ public sealed class MySqlDriver : IDbDriver
                 throw;
             }
             catch { await conn.DisposeAsync(); throw; }
-            return new MySqlDriver(conn);
+            return conn;
         }, ct);
 
     public bool IsOpen => _conn.State == System.Data.ConnectionState.Open;

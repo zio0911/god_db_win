@@ -7,7 +7,7 @@ body:
     attributes:
       label: GodDB 버전
       description: 설정(Ctrl+,) 에서 확인
-      placeholder: "1.3.7.1"
+      placeholder: "1.4.3"
     validations:
       required: true
   - type: dropdown

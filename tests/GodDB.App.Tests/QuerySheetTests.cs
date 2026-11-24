@@ -18,7 +18,7 @@ using static GodDB.Core.L10n;
 
 namespace GodDB.App.Tests;
 
-/// 쿼리 화면에서 여는 시트들 (내보내기 · 튜닝 · CSV 가져오기 · 히스토리 · 빠른 찾기). headless, 화면을 띄우지 않는다.
+/// 쿼리 화면에서 여는 시트들 (내보내기 · CSV 가져오기 · 히스토리 · 빠른 찾기). headless, 화면을 띄우지 않는다.
 public class QuerySheetTests
 {
     private static void Pump() => Dispatcher.UIThread.RunJobs();
@@ -66,7 +66,6 @@ public class QuerySheetTests
     public void Registry_UsesRealSheets()
     {
         Assert.Equal(typeof(ExportSheet), SheetRegistry.Sheets[nameof(AppState.ExportRequest)]);
-        Assert.Equal(typeof(TuningSheet), SheetRegistry.Sheets[nameof(AppState.TuningJob)]);
         Assert.Equal(typeof(CsvImportWindow), SheetRegistry.Sheets[nameof(AppState.ImportingTable)]);
         Assert.Equal(typeof(HistoryWindow), SheetRegistry.Sheets[nameof(AppState.ShowHistory)]);
         Assert.Equal(typeof(QuickOpenWindow), SheetRegistry.Sheets[nameof(AppState.ShowQuickOpen)]);
@@ -138,81 +137,6 @@ public class QuerySheetTests
         w2.SetFetchAll(true);
         Assert.False(w2.Choice.FetchAll);
         Prefs.Remove(ExportChoice.LastFormatKey);
-    });
-
-    // MARK: - 튜닝
-
-    private const string Answer = """
-        ## 요약
-        email 에 인덱스가 없어 전체 스캔해요.
-
-        ## 개선 SQL
-        ```sql
-        SELECT member_id FROM tb_member WHERE email = 'a'
-        ```
-
-        ## 추천 인덱스
-        ```sql
-        CREATE INDEX ix_member_email ON tb_member (email);
-        ```
-
-        ## 설명
-        인덱스를 쓰면 빨라져요.
-        """;
-
-    private static void SetPrivate(object o, string name, object? value) =>
-        o.GetType().GetProperty(name)!.SetValue(o, value);
-
-    [Fact]
-    public Task Tuning_RendersParsedResult_AndNeverRuns() => UiThread.Run(() =>
-    {
-        var env = new TestEnv();
-        var (app, p) = Connected(env);
-        var tabId = app.AddTab("select 1")!.Value;
-        var job = new TuningJob(tabId, "SELECT * FROM tb_member WHERE email = 'a'", "", "p");
-        app.TuningJob = job;
-        var w = new TuningSheet(app, job);
-        w.Show();
-        Pump();
-        // 진행 중
-        Assert.Contains(Tr("테이블 구조와 실행 계획을 모으는 중…"), Texts(w.Body));
-        Assert.Contains(Buttons(w), b => (b.Content as string) == Tr("취소"));
-
-        SetPrivate(job, nameof(TuningJob.Result), TuningResult.Parse(Answer));
-        SetPrivate(job, nameof(TuningJob.AfterWarnings), new List<PlanAnalyzer.Warning>());
-        SetPrivate(job, nameof(TuningJob.Phase), TuningPhase.Done);
-        SetPrivate(job, nameof(TuningJob.Finished), job.Started.AddSeconds(3));
-        w.Render();
-        Pump();
-        var texts = Texts(w.Body);
-        Assert.Contains("email 에 인덱스가 없어 전체 스캔해요.", texts);
-        Assert.Contains(Tr("개선 SQL"), texts);
-        Assert.Contains(Tr("추천 인덱스"), texts);
-        Assert.Contains("CREATE INDEX ix_member_email ON tb_member (email);", texts);
-        Assert.Contains("인덱스를 쓰면 빨라져요.", texts);
-        Assert.Contains(Tr("실행 계획 주의사항 (전 → 후)"), texts);
-        Assert.Contains(Tr("개선 SQL") + " · " + Tr("주의 없음"), texts);
-        Assert.Contains(Buttons(w), b => (b.Content as string) == Tr("다시 튜닝"));
-
-        // 새 탭으로: 실행하지 않고 SQL 만 새 탭에
-        var before = app.Tabs.Count;
-        var newTab = Buttons(w.Body).First(b => (b.Content as string)?.EndsWith(Tr("새 탭으로")) == true);
-        Click(newTab);
-        Assert.Equal(before + 1, app.Tabs.Count);
-        var created = app.Tabs.Last();
-        Assert.Equal("SELECT member_id FROM tb_member WHERE email = 'a';\n", created.Text);
-        Assert.Null(created.Result);
-        Assert.False(created.Running);
-
-        // 편집기에 넣기: 원래 탭에 덧붙인다
-        var insert = Buttons(w.Body).First(b => (b.Content as string)?.EndsWith(Tr("편집기에 넣기")) == true);
-        Click(insert);
-        Assert.Contains("SELECT member_id FROM tb_member WHERE email = 'a'", app.Tab(tabId)!.Text);
-        Assert.False(app.Tab(tabId)!.Running);
-
-        Click(Buttons(w).First(b => (b.Content as string) == Tr("닫기")));
-        Pump();
-        Assert.Null(app.TuningJob);
     });
 
     // MARK: - CSV 가져오기

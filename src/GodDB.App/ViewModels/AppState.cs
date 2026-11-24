@@ -48,8 +48,6 @@ public sealed partial class AppState : ObservableObject
     [ObservableProperty] private TableMeta? _alteringTable;
     /// CSV 가져오기 대상 테이블
     [ObservableProperty] private TableMeta? _importingTable;
-    /// 진행 중이거나 결과를 보고 있는 쿼리 튜닝
-    [ObservableProperty] private TuningJob? _tuningJob;
     [ObservableProperty] private TableActionRequest? _tableAction;
     [ObservableProperty] private EditApplyRequest? _editApply;
     /// 시작 화면 (준비 중 진행 막대)
@@ -59,6 +57,8 @@ public sealed partial class AppState : ObservableObject
     [ObservableProperty] private string? _releaseNotesSince;
     /// 문제 보고 창
     [ObservableProperty] private bool _showProblemReport;
+    /// 이전 버전 설치 창 (Mac 1.4.0)
+    [ObservableProperty] private bool _showPreviousVersions;
     /// 설정 창 (Windows: Ctrl+,)
     [ObservableProperty] private bool _showSettings;
     /// 커밋하지 않은 트랜잭션 확인 (자동 커밋 켜기 / 연결 끊기)

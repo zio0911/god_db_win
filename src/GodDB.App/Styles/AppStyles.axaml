@@ -87,6 +87,13 @@
   <Style Selector="TextBlock.secondary, SelectableTextBlock.secondary">
     <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
   </Style>
+  <!-- 회색 아이콘 (Mac .foregroundStyle(.secondary)) / 강조색 아이콘 -->
+  <Style Selector="c|SymbolIcon.secondary">
+    <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+  </Style>
+  <Style Selector="c|SymbolIcon.accent">
+    <Setter Property="Foreground" Value="{DynamicResource BlueBrush}"/>
+  </Style>
   <Style Selector="TextBlock.caption, SelectableTextBlock.caption">
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>

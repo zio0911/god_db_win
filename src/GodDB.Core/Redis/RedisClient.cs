@@ -18,6 +18,8 @@ public sealed class RedisConnection : IAsyncDisposable
         /// TLS SNI 에 쓸 이름 (IP 이거나 터널이면 null → SNI 안 보냄)
         public string? ServerName { get; init; }
         public bool UseTls { get; init; }
+        /// 서버 인증서 확인 방법 (F9-3)
+        public Drivers.TlsPolicy Tls { get; init; } = new(false, null, null);
         public string Username { get; init; } = "";
         public string? Password { get; init; }
         public int Database { get; init; }
@@ -44,8 +46,26 @@ public sealed class RedisConnection : IAsyncDisposable
     }
 
     public bool IsOpen => _open;
+    /// TLS 상태 (F9-3)
+    public Drivers.TlsStatus TlsStatus { get; private set; } = Drivers.TlsStatus.Off;
 
     internal static async Task<RedisConnection> ConnectAsync(Options o, CancellationToken ct = default)
+    {
+        var verifier = o.UseTls && o.Tls.Verify ? new Drivers.TlsVerifier(o.Tls) : null;
+        try
+        {
+            var conn = await OpenAsync(o, verifier, ct);
+            conn.TlsStatus = o.UseTls ? verifier?.Status ?? Drivers.TlsStatus.Unchecked : Drivers.TlsStatus.Off;
+            return conn;
+        }
+        catch (Exception e) when (verifier?.Failure is { } failure && e is not OperationCanceledException)
+        {
+            // 인증서 확인에서 거부했으면 그 오류(인증서 정보 포함)로
+            throw failure;
+        }
+    }
+
+    private static async Task<RedisConnection> OpenAsync(Options o, Drivers.TlsVerifier? verifier, CancellationToken ct)
     {
         var conn = await HostResolver.TryEach(o.Host, o.Port, async ip =>
         {
@@ -66,8 +86,8 @@ public sealed class RedisConnection : IAsyncDisposable
                 Stream stream = tcp.GetStream();
                 if (o.UseTls)
                 {
-                    // 터널 경유 시 호스트명이 127.0.0.1 이 되어 인증서 검증이 불가하므로 암호화만 사용한다 (Mac 판과 같음).
-                    var ssl = new SslStream(stream, false, (_, _, _, _) => true);
+                    // 서버 인증서는 TlsVerifier 가 판정한다 (확인을 끄면 암호화만)
+                    var ssl = new SslStream(stream, false);
                     // TLS 인사도 연결 과정이라 같은 응답 제한을 둔다 (Mac 판은 NIO 가 첫 명령과 함께 처리해서 AUTH 제한에 포함됨)
                     using var tlsTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     tlsTimeout.CancelAfter(o.Timeout);
@@ -76,7 +96,7 @@ public sealed class RedisConnection : IAsyncDisposable
                         await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
                         {
                             TargetHost = o.ServerName ?? "",
-                            RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                            RemoteCertificateValidationCallback = verifier?.Callback ?? ((_, _, _, _) => true),
                         }, tlsTimeout.Token);
                     }
                     catch (OperationCanceledException) when (!ct.IsCancellationRequested)

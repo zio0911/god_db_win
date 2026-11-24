@@ -23,11 +23,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         App = app;
         _dialogs = dialogs ?? app?.Dialogs ?? new NullDialogs();
         _language = L10n.Language;
-        _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
+        _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, QueryTimeLimit.Seconds));
         _confirmDangerous = RunConfirm.ConfirmDangerous;
+        _prodIdleIndex = Math.Max(0, Array.IndexOf(AppState.ProdIdleChoices, Prefs.Get(AppState.ProdIdleMinutesKey, 30)));
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
-        _tuningEnabled = TuningSettings.Enabled;
         _ollamaUrl = TuningSettings.Url;
         _tuningModel = TuningSettings.Model;
         _assistantEnabled = TuningSettings.AssistantEnabled;
@@ -46,6 +46,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(SystemLanguageNote));
         OnPropertyChanged(nameof(ShowSystemLanguageNote));
         OnPropertyChanged(nameof(RetentionNote));
+        OnPropertyChanged(nameof(HistoryKeepNote));
     }
 
     /// 언어가 바뀌면 VM 이 만든 문장도 다시 읽게 한다
@@ -62,6 +63,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (value >= 0 && value < TimeoutValues.Length) Prefs.Set(AppState.QueryTimeoutKey, TimeoutValues[value]);
     }
 
+    /// 편집기 > 쿼리 오류에 빨간 밑줄 · DB 에 검사 요청 (기본 켬, Mac 1.4.2). 다음 입력부터 적용된다 (Mac 과 같음).
+    [ObservableProperty] private bool _lintEnabled = EditorLint.Enabled;
+    partial void OnLintEnabledChanged(bool value) => EditorLint.Enabled = value;
+    [ObservableProperty] private bool _lintServer = EditorLint.ServerEnabled;
+    partial void OnLintServerChanged(bool value) => EditorLint.ServerEnabled = value;
+
     /// 안전 > 위험한 명령 실행 전 확인 (기본 켬). 켜고 끈 기록은 상태창 · 로그 파일 · 감사 로그(설정)에 남긴다. (Mac #103)
     [ObservableProperty] private bool _confirmDangerous;
     partial void OnConfirmDangerousChanged(bool value)
@@ -70,6 +77,37 @@ public sealed partial class SettingsViewModel : ObservableObject
         App?.Log(value ? LogLevel.Info : LogLevel.Warning, LogSource.App,
                  value ? Tr("위험한 명령 실행 전 확인을 켰어요") : Tr("위험한 명령 실행 전 확인을 껐어요"),
                  audit: new AuditRecord(AuditAction.Settings, "GodDB", value ? "위험한 명령 확인 켬" : "위험한 명령 확인 끔"));
+    }
+
+    // MARK: 히스토리 보관 기간 (Mac 1.4.1: 7 · 30 · 90일 · 영구, 기본 30일)
+
+    public IReadOnlyList<string> HistoryKeepDaysLabels => [Tr("7일"), Tr("30일"), Tr("90일"), Tr("영구 보관")];
+    [ObservableProperty] private int _historyKeepDaysIndex = Math.Max(0, QueryHistory.KeepDaysChoices.ToList().IndexOf(QueryHistory.KeepDays));
+    partial void OnHistoryKeepDaysIndexChanged(int value)
+    {
+        if (value < 0 || value >= QueryHistory.KeepDaysChoices.Count) return;
+        QueryHistory.KeepDays = QueryHistory.KeepDaysChoices[value];
+        OnPropertyChanged(nameof(HistoryKeepNote));
+        // 바꾸면 바로 정리한다 (화면을 막지 않게 뒤에서)
+        var history = App?.History ?? QueryHistory.Shared;
+        _ = Task.Run(history.ApplyRetentionNow);
+    }
+
+    /// Mac 문장의 "이 Mac 의 키체인 키" → Windows: DPAPI(현재 Windows 계정)로 잠근 이 PC 의 키
+    public string HistoryKeepNote => QueryHistory.KeepDays == 0
+        ? Tr("실행한 쿼리 기록을 지우지 않고 남겨요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.")
+        : Tr("%@일이 지난 쿼리 기록은 자동으로 지워요. 기록과 열어 둔 쿼리 탭 내용은 이 PC 의 Windows 계정 키(DPAPI)로 암호화해서 저장해요.", QueryHistory.KeepDays);
+
+    /// 안전 > 운영 접속 자동 끊기 (끔 · 10분 · 30분(기본) · 60분, 1.4.0)
+    public IReadOnlyList<string> ProdIdleLabels => [.. AppState.ProdIdleChoices.Select(m => m == 0 ? Tr("끔") : Tr("%@분", m))];
+    [ObservableProperty] private int _prodIdleIndex;
+    partial void OnProdIdleIndexChanged(int value)
+    {
+        if (value < 0 || value >= AppState.ProdIdleChoices.Length) return;
+        var m = AppState.ProdIdleChoices[value];
+        Prefs.Set(AppState.ProdIdleMinutesKey, m);
+        App?.Log(LogLevel.Info, LogSource.App, m == 0 ? Tr("운영 접속 자동 끊기를 껐어요") : Tr("운영 접속 자동 끊기: %@분", m),
+                 audit: new AuditRecord(AuditAction.Settings, "GodDB", m == 0 ? "운영 자동 끊기 끔" : $"운영 자동 끊기 {m}분"));
     }
 
     [ObservableProperty] private bool _logFileEnabled;
@@ -198,21 +236,55 @@ public sealed partial class SettingsViewModel : ObservableObject
         App?.NotifyAssistantEnabled();
     }
 
-    [ObservableProperty] private bool _tuningEnabled;
-    partial void OnTuningEnabledChanged(bool value) => TuningSettings.Enabled = value;
 
+    /// 입력 중인 주소. 이 PC(localhost) 주소일 때만 저장한다 (다른 서버로 구조 · SQL · 샘플 값이 나가지 않게, Mac 1.4.0)
     [ObservableProperty] private string _ollamaUrl;
     partial void OnOllamaUrlChanged(string value)
     {
-        TuningSettings.Url = value;
+        if (AISettings.IsLocalUrl(value)) AISettings.Url = value;
         OnPropertyChanged(nameof(IsNonLocal));
     }
 
-    public bool IsNonLocal => !TuningSettings.IsLocal;
+    public bool IsNonLocal => !AISettings.IsLocalUrl(OllamaUrl) || !AISettings.IsLocal;
     public string NonLocalWarning => TuningSettings.NonLocalWarning;
 
+    /// [기본값(localhost)으로]
+    [RelayCommand]
+    private async Task ResetOllamaUrlAsync()
+    {
+        OllamaUrl = AISettings.DefaultUrl;
+        AISettings.Url = AISettings.DefaultUrl;
+        await RefreshAsync();
+    }
+
     [ObservableProperty] private string _tuningModel;
-    partial void OnTuningModelChanged(string value) => TuningSettings.Model = value ?? "";
+    partial void OnTuningModelChanged(string value)
+    {
+        AISettings.Model = value ?? "";
+        Probe = null;
+    }
+
+    /// [모델 확인] 결과 (null = 아직 안 함)
+    [ObservableProperty] private ModelHealth? _probe;
+    [ObservableProperty] private bool _probing;
+    partial void OnProbeChanged(ModelHealth? value) { OnPropertyChanged(nameof(ProbeText)); OnPropertyChanged(nameof(ProbeOk)); OnPropertyChanged(nameof(ProbeFailed)); }
+    public string ProbeText => Probe == null ? "" : Probe.IsOK ? "✅ OK" : "⛔ " + Probe.Reason;
+    public bool ProbeOk => Probe?.IsOK == true;
+    public bool ProbeFailed => Probe is { IsOK: false };
+
+    /// 고른 모델(자동이면 쓸 모델)에 아주 짧은 요청을 보내 답하는지 확인 (AI 데이터 찾기와 같은 확인, 기억한 결과는 새로)
+    [RelayCommand]
+    private async Task CheckModelAsync()
+    {
+        var models = (Status?.RunningModels ?? []).Select(m => m.Name).ToList();
+        if (AISettings.EffectiveModel(models) is not { } model) return;
+        Probing = true;
+        Probe = await ModelProbe.CheckAsync(model, AISettings.Client, useCache: false);
+        Probing = false;
+    }
+
+    public bool CanCheckModel => !Probing && (Status?.RunningModels.Count ?? 0) > 0;
+    partial void OnProbingChanged(bool value) => OnPropertyChanged(nameof(CanCheckModel));
 
     [ObservableProperty] private OllamaStatus? _status;
     [ObservableProperty] private bool _checking;
@@ -224,6 +296,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanStartOllama));
         OnPropertyChanged(nameof(ShowDownload));
         OnPropertyChanged(nameof(ModelChoices));
+        OnPropertyChanged(nameof(CanCheckModel));
     }
 
     public string StatusText => Status switch
@@ -242,7 +315,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         get
         {
-            var list = new List<Choice<string>> { new("", Tr("자동 (첫 번째 모델)")) };
+            var list = new List<Choice<string>> { new("", Tr("자동 (추천 모델 먼저)")) };
             var models = Status?.RunningModels ?? [];
             list.AddRange(models.Select(m => new Choice<string>(m.Name, $"{m.Name}  ·  {m.ParameterSize}  ·  {m.SizeGB:0.0}GB")));
             if (TuningModel.Length > 0 && models.All(m => m.Name != TuningModel)) list.Add(new(TuningModel, TuningModel));
@@ -256,14 +329,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         set { if (value != null) TuningModel = value.Value; }
     }
 
-    public string RecommendNote => Tr("추천: %@ (코드·SQL 에 강하고 한국어도 잘 알아들어요). 메모리가 넉넉하면 큰 모델일수록 정확해요.",
-                                      string.Join(", ", TuningSettings.RecommendedModels));
-    public const string PullCommand = "ollama pull qwen2.5-coder:14b";
+    /// Mac: "M5 Pro 메모리 48GB 이상이면 qwen3.8:27b-mlx, 24GB 면 qwen3:14b". Windows 는 Apple 칩 이름 대신 메모리(그래픽 메모리 포함)로
+    /// 안내하고, MLX 대신 일반 Ollama 태그를 쓴다 (AISettings.RecommendedModels 참고).
+    public string RecommendNote => Tr("추천: 메모리 48GB 이상이면 %@, 24GB 면 %@ 를 추천해요. 모델을 \"자동\"으로 두면 설치된 추천 모델을 먼저 써요.",
+                                      AISettings.DefaultRecommendedModel, AISettings.SmallMemoryModel);
+    public static string PullCommand => "ollama pull " + AISettings.DefaultRecommendedModel;
+    public static string PullSmallCommand => "ollama pull " + AISettings.SmallMemoryModel;
     public string PullCommandText => PullCommand;
+    public string PullSmallCommandText => PullSmallCommand;
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        // AI 어시스턴트의 [‹모델› 로 바꾸기] 로 바뀐 모델을 반영
+        if (TuningModel != AISettings.Model) TuningModel = AISettings.Model;
         Checking = true;
         try { Status = await Task.Run(() => TuningSettings.Client.StatusAsync()); }
         catch { Status = new OllamaStatus.NotInstalled(); }
@@ -291,6 +370,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private Task CopyPullAsync() => _dialogs.SetClipboardTextAsync(PullCommand);
+
+    [RelayCommand]
+    private Task CopyPullSmallAsync() => _dialogs.SetClipboardTextAsync(PullSmallCommand);
 
     // MARK: - 업데이트
 

@@ -181,7 +181,14 @@ public sealed class PendingEdits : IEquatable<PendingEdits>
     public override int GetHashCode() => Count;
 }
 
-public enum ResultEditingError { NotSingleTable, TableNotFound, NoPrimaryKey, PrimaryKeyNotSelected, ValuesTruncated }
+public enum ResultEditingError
+{
+    NotSingleTable, TableNotFound, NoPrimaryKey, PrimaryKeyNotSelected, ValuesTruncated,
+    /// Redshift: 기본 키가 정보용이라 행을 하나로 고를 수 없다
+    KeysNotEnforced,
+    /// 결과 열이 어느 컬럼인지 SELECT 목록으로 확실히 알 수 없다
+    ColumnsUnclear,
+}
 
 /// 결과를 고칠 수 없는 이유. (Swift 의 associated value enum → 종류 + 값)
 public sealed class ResultEditingException(ResultEditingError kind, string? detail = null) : Exception(Describe(kind, detail))
@@ -200,6 +207,10 @@ public sealed class ResultEditingException(ResultEditingError kind, string? deta
             Tr("테이블 %@ 에 기본 키가 없어서 행을 정확히 고를 수 없어요.", detail),
         ResultEditingError.PrimaryKeyNotSelected =>
             Tr("결과에 기본 키 컬럼(%@)이 있어야 고칠 수 있어요. SELECT 에 넣어 주세요.", detail),
+        ResultEditingError.ColumnsUnclear =>
+            Tr("결과 열이 테이블의 어느 컬럼인지 확실하지 않아 고치지 않아요. 별칭 · 식 없이 컬럼 이름이나 * 로 조회해 주세요."),
+        ResultEditingError.KeysNotEnforced =>
+            Tr("Redshift 는 기본 키를 강제하지 않아 같은 키의 행이 여러 개일 수 있어서, 결과 표에서 고치지 않아요. UPDATE 문으로 수정하세요."),
         _ => Tr("값이 너무 커서 앞부분만 불러온 칸이 있어 이 결과는 표에서 고칠 수 없어요. UPDATE 문으로 수정하세요."),
     };
 }
@@ -231,23 +242,123 @@ public static partial class ResultEditing
         return string.Join(".", raw.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim('`', '"', '[', ']')));
     }
 
+    /// SQL 에 쓴 테이블 이름으로 스키마의 테이블을 찾는다 (대소문자 무시, `db.t` · `dbo.t` 도)
+    public static TableMeta? TableNamed(string name, IReadOnlyList<TableMeta> tables)
+    {
+        var lower = name.ToLowerInvariant();
+        var last = name.Split('.', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.ToLowerInvariant() ?? lower;
+        return tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == lower)
+               ?? tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == last)
+               ?? tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == "dbo." + last);
+    }
+
+    // SQL Server TOP (n) [PERCENT] [WITH TIES], ALL
+    [GeneratedRegex(@"^(?i)(ALL\s+)?(TOP\s*(\(\s*\d+\s*\)|\d+)(\s+PERCENT)?(\s+WITH\s+TIES)?\s+)?")]
+    private static partial Regex SelectPrefix();
+
+    private const string Ident = @"(?:`[^`]+`|""[^""]+""|\[[^\]]+\]|[A-Za-z0-9_$#@]+)";
+
+    [GeneratedRegex("^(?:" + Ident + @"\.)*\*$")]
+    private static partial Regex StarItem();
+
+    [GeneratedRegex("^((?:" + Ident + @"\.)*)(" + Ident + @")(?:\s+(?:(?i:AS)\s+)?(" + Ident + "))?$")]
+    private static partial Regex ColumnItem();
+
+    /// SELECT 목록의 항목 (맨 위 수준 쉼표로 나눔). TOP · ALL 같은 앞부분은 뺀다. 읽을 수 없으면 null
+    public static List<string>? SelectItems(string sql)
+    {
+        var s = SqlText.StripComments(sql);
+        int i = 0, depth = 0;
+        var items = new List<string>();
+        var cur = new System.Text.StringBuilder();
+        int? start = null;
+        string Word(int k)
+        {
+            var j = k;
+            var w = new System.Text.StringBuilder();
+            while (j < s.Length && (char.IsLetter(s[j]) || s[j] == '_')) { w.Append(s[j]); j++; }
+            return w.ToString().ToUpperInvariant();
+        }
+        bool Boundary(int k) => k < 0 || !(char.IsLetterOrDigit(s[k]) || s[k] == '_');
+        while (i < s.Length)
+        {
+            var ch = s[i];
+            if (ch is '\'' or '"' or '`' or '[')
+            {
+                var close = ch == '[' ? ']' : ch;
+                var j = i + 1;
+                while (j < s.Length && s[j] != close) j++;
+                if (start != null) cur.Append(s, i, Math.Min(j, s.Length - 1) - i + 1);
+                i = j + 1;
+                continue;
+            }
+            if (ch == '(') depth++;
+            else if (ch == ')') depth--;
+            if (depth == 0 && Boundary(i - 1))
+            {
+                var w = Word(i);
+                if (start == null && w == "SELECT") { start = i + 6; i += 6; continue; }
+                if (start != null && w == "FROM")
+                {
+                    items.Add(cur.ToString());
+                    break;
+                }
+            }
+            if (start != null)
+            {
+                if (depth == 0 && ch == ',') { items.Add(cur.ToString()); cur.Clear(); }
+                else cur.Append(ch);
+            }
+            i++;
+        }
+        if (start == null || items.Count == 0) return null;
+        var list = items.Select(x => x.Trim()).ToList();
+        list[0] = SelectPrefix().Replace(list[0], "", 1);
+        return list.Any(x => x.Length == 0) ? null : list;
+    }
+
+    /// 결과 열마다 실제 컬럼 이름 (식 · 다른 이름의 별칭이면 null). SELECT 목록과 결과 열 수가 맞지 않으면 null
+    internal static List<string?>? ColumnSources(string sql, IReadOnlyList<string> columns, TableMeta table)
+    {
+        if (SelectItems(sql) is not { } items) return null;
+        static string Unquote(string s) => s.Trim('`', '"', '[', ']');
+        var output = new List<string?>();
+        foreach (var item in items)
+        {
+            if (StarItem().IsMatch(item))
+            {
+                output.AddRange(table.Columns.Select(c => (string?)c.Name));
+            }
+            else if (ColumnItem().Match(item) is { Success: true } m)
+            {
+                var col = Unquote(m.Groups[2].Value);
+                var alias = m.Groups[3].Success ? Unquote(m.Groups[3].Value) : col;
+                output.Add(alias.Equals(col, StringComparison.OrdinalIgnoreCase) ? col : null);
+            }
+            else
+            {
+                output.Add(null);  // 식 · 함수 · 상수
+            }
+        }
+        return output.Count == columns.Count ? output : null;
+    }
+
     /// 편집할 수 있는지 확인하고 대상 정보를 만든다.
     public static EditTarget Target(string sql, IReadOnlyList<string> columns, IReadOnlyList<TableMeta> tables)
     {
         if (SingleTable(sql) is not { } name) throw new ResultEditingException(ResultEditingError.NotSingleTable);
-        var lower = name.ToLowerInvariant();
-        var last = name.Split('.').LastOrDefault()?.ToLowerInvariant() ?? lower;
-        var table = tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == lower)
-                    ?? tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == last)
-                    ?? tables.FirstOrDefault(t => t.Name.ToLowerInvariant() == "dbo." + last)
-                    ?? throw new ResultEditingException(ResultEditingError.TableNotFound, name);
+        var table = TableNamed(name, tables) ?? throw new ResultEditingException(ResultEditingError.TableNotFound, name);
         if (table.Indexes.FirstOrDefault(i => i.IsPrimary) is not { Columns.Count: > 0 } pk)
             throw new ResultEditingException(ResultEditingError.NoPrimaryKey, table.Name);
+        // 결과 열이 실제로 어느 컬럼인지: SELECT 목록을 보고, 별칭이 다른 이름이거나 식인 열은 고치지 않는다 (#194).
+        // (이름만 맞춰 보면 SELECT name AS id 의 'id' 를 기본 키로 보고 다른 행을 바꿀 수 있다)
+        var sources = ColumnSources(sql, columns, table) ?? throw new ResultEditingException(ResultEditingError.ColumnsUnclear);
         var map = new Dictionary<int, string>();
         var used = new HashSet<string>();
         for (int i = 0; i < columns.Count; i++)
         {
-            var c = table.Columns.FirstOrDefault(c => c.Name.Equals(columns[i], StringComparison.OrdinalIgnoreCase));
+            if (sources[i] is not { } source || !source.Equals(columns[i], StringComparison.OrdinalIgnoreCase)) continue;
+            var c = table.Columns.FirstOrDefault(c => c.Name.Equals(source, StringComparison.OrdinalIgnoreCase));
             if (c != null && used.Add(c.Name.ToLowerInvariant())) map[i] = c.Name;
         }
         var target = new EditTarget(table, pk.Columns, map);
@@ -258,11 +369,13 @@ public static partial class ResultEditing
 
     /// 결과를 고칠 수 있으면 대상, 못 고치면 이유. 편집과 상관없는 결과(빈 결과, 실행 계획)는 null.
     /// (Mac: ResultEditingUI.swift 의 AppState.editTarget(for:))
-    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables)
+    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables,
+        bool redshift = false)
     {
         if (result is not { Columns.Count: > 0 } || isPlan || result.Sql is not { } sql) return null;
         if (readOnly) return new EditCheck(null, new GodDbException(DbErrorKind.ReadOnlyBlocked));
         if (result.TruncatedCells > 0) return new EditCheck(null, new ResultEditingException(ResultEditingError.ValuesTruncated));
+        if (redshift) return new EditCheck(null, new ResultEditingException(ResultEditingError.KeysNotEnforced));
         try { return new EditCheck(Target(sql, [.. result.Columns.Select(c => c.Name)], tables), null); }
         catch (Exception e) { return new EditCheck(null, e); }
     }
