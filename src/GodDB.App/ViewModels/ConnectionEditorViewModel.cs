@@ -16,6 +16,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
         IsNew = isNew;
         _original = profile;
         _kind = profile.Kind;
+        _type = profile.Type;
         _name = profile.Name;
         _group = profile.Group;
         _host = profile.Host;
@@ -46,10 +47,14 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     private readonly bool _loading;
 
     public IReadOnlyList<DatabaseKind> Kinds { get; } = Enum.GetValues<DatabaseKind>();
+    /// 새 접속 화면의 DB 종류 (Redshift 포함 — PostgreSQL 프로토콜, 포트 5439 · TLS 켬)
+    public IReadOnlyList<ConnectionType> Types { get; } = ConnectionTypes.All;
     public IReadOnlyList<RedisMode> RedisModes { get; } = Enum.GetValues<RedisMode>();
     public IReadOnlyList<ConnectionEnvironment> Environments { get; } = Enum.GetValues<ConnectionEnvironment>();
 
     [ObservableProperty] private DatabaseKind _kind;
+    /// 화면에 보이는 DB 종류 (Mac ConnectionEditorView 의 $profile.type)
+    [ObservableProperty] private ConnectionType _type;
     [ObservableProperty] private string _name;
     [ObservableProperty] private string _group;
     [ObservableProperty] private string _host;
@@ -85,7 +90,25 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
         if (Port == oldValue.DefaultPort()) Port = newValue.DefaultPort();
     }
 
-    partial void OnKindChanged(DatabaseKind value) => NotifyLayout();
+    partial void OnKindChanged(DatabaseKind value)
+    {
+        if (Type.Kind() != value) Type = ConnectionTypes.Of(value, false);
+        NotifyLayout();
+    }
+
+    partial void OnTypeChanging(ConnectionType oldValue, ConnectionType newValue)
+    {
+        // 포트가 이전 종류의 기본값이면 새 종류의 기본값으로 (Redshift 5439)
+        if (Port == oldValue.DefaultPort()) Port = newValue.DefaultPort();
+    }
+
+    partial void OnTypeChanged(ConnectionType value)
+    {
+        Kind = value.Kind();
+        // Redshift 는 TLS 가 기본
+        if (value == ConnectionType.Redshift) UseTls = true;
+        OnPropertyChanged(nameof(KindTitle));
+    }
 
     partial void OnRedisModeChanging(RedisMode oldValue, RedisMode newValue)
     {
@@ -125,7 +148,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     public bool ShowAuthPicker => IsMssql && OperatingSystem.IsWindows();
     public bool ShowCredentials => !(IsMssql && WindowsAuth);
     public int AuthIndex { get => WindowsAuth ? 1 : 0; set => WindowsAuth = value == 1; }
-    public string KindTitle => Kind.Title();
+    public string KindTitle => Type.Title();
     public string ReadOnlyTitle => IsRedis ? Tr("읽기전용 (조회 명령만 허용)") : Tr("읽기전용 (SELECT / SHOW / DESC / EXPLAIN 만 허용)");
     public string HostTitle => IsSentinel ? Tr("센티널 호스트") : Tr("호스트");
     public string HostWatermark => IsSentinel ? "s1:26379, s2:26379" : "xxx.rds.amazonaws.com";
@@ -174,6 +197,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
     public ConnectionProfile Draft => _original with
     {
         Kind = Kind,
+        Redshift = Kind == DatabaseKind.Postgres && Type == ConnectionType.Redshift,
         Name = Name.Trim(),
         Group = Group,
         Host = Host.Trim(),
@@ -239,7 +263,7 @@ public sealed partial class ConnectionEditorViewModel : ObservableObject
             var s = await Task.Run(() => DbSession.ConnectAsync(draft, draft.NeedsPassword ? Password : null));
             // 연결은 이미 성공. 버전 조회가 안 되더라도(권한 등) 실패로 보지 않는다.
             string ver;
-            try { ver = await Task.Run(() => s.ServerVersionAsync()); } catch { ver = draft.Kind.Title(); }
+            try { ver = await Task.Run(() => s.ServerVersionAsync()); } catch { ver = draft.TypeTitle; }
             await s.CloseAsync();
             TestOk = true;
             TestMessage = Tr("연결 성공 · %@", ver);

@@ -369,11 +369,13 @@ public static partial class ResultEditing
 
     /// 결과를 고칠 수 있으면 대상, 못 고치면 이유. 편집과 상관없는 결과(빈 결과, 실행 계획)는 null.
     /// (Mac: ResultEditingUI.swift 의 AppState.editTarget(for:))
-    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables)
+    public static EditCheck? Check(QueryResult? result, bool isPlan, bool readOnly, IReadOnlyList<TableMeta> tables,
+        bool redshift = false)
     {
         if (result is not { Columns.Count: > 0 } || isPlan || result.Sql is not { } sql) return null;
         if (readOnly) return new EditCheck(null, new GodDbException(DbErrorKind.ReadOnlyBlocked));
         if (result.TruncatedCells > 0) return new EditCheck(null, new ResultEditingException(ResultEditingError.ValuesTruncated));
+        if (redshift) return new EditCheck(null, new ResultEditingException(ResultEditingError.KeysNotEnforced));
         try { return new EditCheck(Target(sql, [.. result.Columns.Select(c => c.Name)], tables), null); }
         catch (Exception e) { return new EditCheck(null, e); }
     }

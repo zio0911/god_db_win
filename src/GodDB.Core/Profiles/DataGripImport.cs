@@ -131,6 +131,13 @@ public static partial class DataGripImport
         bool Has(string prefix) => lower.StartsWith(prefix, StringComparison.Ordinal);
         if (Has("jdbc:mysql://") || Has("jdbc:mariadb://") || Has("jdbc:mysql:aws://")) p.Kind = DatabaseKind.Mysql;
         else if (Has("jdbc:postgresql://")) p.Kind = DatabaseKind.Postgres;
+        else if (Has("jdbc:redshift://"))
+        {
+            // Amazon Redshift: PostgreSQL 프로토콜, 기본 포트 5439, 드라이버 기본이 SSL
+            p.Kind = DatabaseKind.Postgres;
+            p.Redshift = true;
+            p.UseTLS = true;
+        }
         else if (Has("jdbc:sqlserver://") || Has("jdbc:jtds:sqlserver://")) p.Kind = DatabaseKind.Mssql;
         else if (Has("jdbc:redis://") || Has("jdbc:rediss://") || Has("redis://") || Has("rediss://"))
         {
@@ -139,7 +146,7 @@ public static partial class DataGripImport
         }
         else return null;
         var rest = url[(url.IndexOf("://", StringComparison.Ordinal) + 3)..];
-        p.Port = p.Kind.DefaultPort();
+        p.Port = Has("jdbc:redshift://") ? 5439 : p.Kind.DefaultPort();
 
         // 쿼리 / 속성
         var parameters = new Dictionary<string, string>();

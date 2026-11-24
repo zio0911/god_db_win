@@ -148,6 +148,8 @@ public static class ErrorText
 
         switch (error)
         {
+            case Drivers.DbConnectTimeoutException t:
+                return new(t.Message, Tr("네트워크(VPN) 연결이나 보안 그룹에서 이 IP가 허용돼 있는지 확인해 주세요."), raw);
             case MySqlException my when my.Number > 0 && my.Number < 2000:
                 // 서버가 돌려준 오류 (Mac: MySQLError.server)
                 return new($"[{my.Number}] {my.Message}", ServerHint(my.Number, my.Message), raw);

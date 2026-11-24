@@ -27,6 +27,10 @@ public sealed partial class SidebarViewModel : ObservableObject
     [ObservableProperty] private IReadOnlyList<string> _databases = [];
     [ObservableProperty] private string? _currentDatabase;
     [ObservableProperty] private bool _schemaLoading;
+    /// 접속 찾기 칸 (이름 · 주소 · DB · 그룹 · DB 종류 · SSH 호스트 · 환경)
+    [ObservableProperty] private string _connectionQuery = "";
+    /// 찾는 중일 때 아래에 보이는 "N개 중 M개" / "찾는 접속이 없어요"
+    [ObservableProperty] private string? _connectionSearchText;
 
     private bool _syncingDatabase;
 
@@ -41,6 +45,7 @@ public sealed partial class SidebarViewModel : ObservableObject
             if (id == app.SelectedProfileId) RebuildSchema();
         };
         app.PropertyChanged += OnAppChanged;
+        app.ConnectionListOrderChanged += RebuildConnections;
         // 언어를 바꾸면 VM 이 만든 문장(개수, 절 제목)도 새 언어로
         L10n.LanguageChanged += () => AppState.RunOnUi(() =>
         {
@@ -81,16 +86,31 @@ public sealed partial class SidebarViewModel : ObservableObject
         Prefs.Set(CollapsedGroupsKey, ConnectionGroups.EncodeCollapsed(c));
     }
 
+    partial void OnConnectionQueryChanged(string value) => RebuildConnections();
+
+    private bool Searching => ConnectionQuery.Trim().Length > 0;
+
+    /// 그룹 없는 접속 먼저, 그다음 그룹별 — 찾기 · 정렬 메뉴를 따른다 (Mac ProfileList)
     public void RebuildConnections()
     {
         var collapsed = Collapsed;
         ConnectionItems.Clear();
-        foreach (var p in ConnectionGroups.Ungrouped(App.Profiles)) ConnectionItems.Add(Row(p));
-        foreach (var g in App.ProfileGroups)
+        var profiles = App.Profiles.ToList();
+        var sort = App.ConnectionSort;
+        var shown = ConnectionListOrder.Sorted(profiles.Where(p => ConnectionListOrder.Matches(p, ConnectionQuery)).ToList(),
+            sort, App.ConnectedFirst, id => App.ConnectionState(id).IsConnected);
+        foreach (var p in shown.Where(p => p.Group.Length == 0)) ConnectionItems.Add(Row(p));
+        foreach (var g in ConnectionListOrder.SortedGroups(profiles, sort))
         {
-            var members = ConnectionGroups.Members(App.Profiles, g).Select(Row).ToList();
-            ConnectionItems.Add(new GroupRowViewModel(this, g, members, !collapsed.Contains(g)));
+            var members = shown.Where(p => p.Group == g).Select(Row).ToList();
+            if (members.Count == 0) continue;
+            // 찾는 중에는 걸린 접속이 보이게 그룹을 펼친다 (접어 둔 상태는 그대로 둔다)
+            ConnectionItems.Add(new GroupRowViewModel(this, g, members, Searching || !collapsed.Contains(g)) { KeepCollapsedState = Searching });
         }
+        ConnectionSearchText = !Searching ? null
+            : shown.Count == 0 ? Tr("찾는 접속이 없어요") : Tr("%@개 중 %@개", profiles.Count, shown.Count);
+        OnPropertyChanged(nameof(ShowSortMenu));
+        OnPropertyChanged(nameof(SortTitle));
         FailureMessage = App.State.IsFailed ? App.State.Message : null;
         ShowRedis = App.State.IsConnected && App.SelectedRedis != null;
         ShowSchema = App.State.IsConnected && App.SelectedRedis == null;
@@ -98,6 +118,9 @@ public sealed partial class SidebarViewModel : ObservableObject
     }
 
     public bool HasProfiles => App.Profiles.Count > 0;
+    /// 접속이 둘 이상이면 "접속" 제목 오른쪽에 정렬 메뉴
+    public bool ShowSortMenu => App.Profiles.Count > 1;
+    public string SortTitle => App.ConnectionSort.Title();
 
     private ProfileRowViewModel Row(ConnectionProfile p) =>
         new(p, App.ConnectionState(p.Id), App.Tabs.Count(t => t.ProfileId == p.Id), App.SelectedProfileId == p.Id);
@@ -182,6 +205,12 @@ public sealed partial class SidebarViewModel : ObservableObject
     [RelayCommand]
     private void PasteDataGrip() => App.Fire(() => App.PasteDataGripAsync());
 
+    [RelayCommand]
+    private void ImportDBeaver() => App.Fire(App.ChooseDBeaverFileAsync);
+
+    [RelayCommand]
+    private void ClearConnectionQuery() => ConnectionQuery = "";
+
     public Task CopyAsync(string text) => App.Dialogs.SetClipboardTextAsync(text);
 }
 
@@ -194,6 +223,7 @@ public sealed class ProfileRowViewModel(ConnectionProfile profile, ConnectionSta
     public bool IsSelected { get; } = selected;
     public string Name => Profile.Name;
     public DatabaseKind Kind => Profile.Kind;
+    public bool Redshift => Profile.Redshift;
     public ConnectionEnvironment Environment => Profile.Environment;
     public bool ReadOnly => Profile.ReadOnly;
     public bool IsConnecting => State.Kind == ConnectionStateKind.Connecting;
@@ -226,7 +256,13 @@ public sealed partial class GroupRowViewModel : ObservableObject
         _isExpanded = expanded;
     }
 
-    partial void OnIsExpandedChanged(bool value) => _owner.SetExpanded(Name, value);
+    /// 찾는 중에 펼친 그룹은 접어 둔 상태를 바꾸지 않는다
+    public bool KeepCollapsedState { get; init; }
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        if (!KeepCollapsedState) _owner.SetExpanded(Name, value);
+    }
 
     public int ConnectedCount => Members.Count(m => m.State.IsConnected);
     public bool HasConnected => ConnectedCount > 0;

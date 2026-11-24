@@ -581,6 +581,7 @@ public sealed partial class AppState
         if (Profile(tab.ProfileId)?.ReadOnly == true) return (null, new GodDbException(DbErrorKind.ReadOnlyBlocked));
         if (result.TruncatedCells > 0) return (null, new ResultEditingException(ResultEditingError.ValuesTruncated));
         var tables = Connections.TryGetValue(tab.ProfileId, out var c) ? c.Tables : [];
+        if (c?.Session?.Dialect.IsRedshift() == true) return (null, new ResultEditingException(ResultEditingError.KeysNotEnforced));
         try { return (ResultEditing.Target(sql, [.. result.Columns.Select(x => x.Name)], tables), null); }
         catch (Exception e) { return (null, e); }
     }
