@@ -342,6 +342,9 @@ public sealed class EditBar : Border
         Classes.Add("editbar");
     }
 
+    /// 버튼을 누르기 전에 (칸을 고치는 중이면 그 값을 먼저 넣는다)
+    public Action? BeforeAction { get; set; }
+
     /// "편집 불가: 이유" 등 지금 보이는 글자 (테스트용)
     public string Message { get; private set; } = "";
 
@@ -351,17 +354,19 @@ public sealed class EditBar : Border
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
         if (target.Target is { } t)
         {
-            Message = Tr("%@ 편집 가능 · 행을 고르면 오른쪽에서 값을 고칠 수 있어요", t.Table.Name);
+            Message = Tr("%@ 편집 가능 · 칸을 더블클릭해 바로 고치거나, 행을 고르면 오른쪽에서 고쳐요", t.Table.Name);
             var msg = Q.H(6, new TextBlock { Text = "✎", Foreground = Q.Blue, VerticalAlignment = VerticalAlignment.Center },
                 new TextBlock { Text = Message, Classes = { "caption" }, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
             g.Children.Add(msg);
             var right = Q.H(6,
                 Q.B("＋ " + Tr("행 추가"), () =>
                 {
+                    BeforeAction?.Invoke();
                     if (_tab() is { } tab && _app.AddRow(tab.Id) is { } id) _select(id);
                 }, null, "hover"));
             var del = Q.B("－ " + Tr("선택 행 삭제"), () =>
             {
+                BeforeAction?.Invoke();
                 if (_tab() is { } tab) _app.ToggleDelete(tab.Id, _selection());
             }, Tr("한 번 더 누르면 삭제 표시를 풀어요"), "hover");
             del.IsEnabled = _selection().Count > 0;
@@ -370,8 +375,8 @@ public sealed class EditBar : Border
             {
                 right.Children.Add(Q.Divider(vertical: true));
                 right.Children.Add(new TextBlock { Text = Tr("변경 %@건", edits.Count), FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = Q.Orange, VerticalAlignment = VerticalAlignment.Center });
-                right.Children.Add(Q.B(Tr("되돌리기"), () => { if (_tab() is { } tab) _app.RevertEdits(tab.Id); }, null, "hover"));
-                var apply = Q.B("✓ " + Tr("적용…"), () => { if (_tab() is { } tab) _app.RequestApplyEdits(tab.Id); }, null, "hover");
+                right.Children.Add(Q.B(Tr("되돌리기"), () => { BeforeAction?.Invoke(); if (_tab() is { } tab) _app.RevertEdits(tab.Id); }, null, "hover"));
+                var apply = Q.B("✓ " + Tr("적용…"), () => { BeforeAction?.Invoke(); if (_tab() is { } tab) _app.RequestApplyEdits(tab.Id); }, null, "hover");
                 apply.Foreground = Q.Blue;
                 right.Children.Add(apply);
             }
@@ -512,6 +517,32 @@ public sealed class RowDetailPanel : Border
     private string? _key;
     private readonly List<(int Column, TextBlock Name, TextBlock? Count, TextBox? Box)> _views = [];
     private bool _updatingBox;
+    /// 외래 키 ↗ 단추 (값이 바뀌면 사용 가능 여부만 다시 맞춘다)
+    private readonly List<(Button Button, FKRelation Relation)> _fkButtons = [];
+    /// JSON 칸 보기와 "JSON 형식이 아니에요" 경고 (편집 중 값이 바뀌면 다시 맞춘다)
+    private readonly List<(int Column, JsonFieldView View, TextBlock? Warning)> _jsonViews = [];
+    private FKContext? _fk;
+    private GridRow? _row;
+
+    /// 외래 키 ↗ 단추들 (테스트용)
+    public IReadOnlyList<Button> FkButtons => _fkButtons.Select(b => b.Button).ToList();
+    /// 맨 아래 "참조하는 테이블" 단추들 (테스트용)
+    public IReadOnlyList<Button> ReferencingButtons { get; private set; } = [];
+    /// JSON 칸 보기 (컬럼 번호 → 보기, 테스트용)
+    public IReadOnlyDictionary<int, JsonFieldView> JsonViews => _jsonViews.ToDictionary(v => v.Column, v => v.View);
+    /// JSON 경고가 보이는 컬럼 (테스트용)
+    public IReadOnlyList<int> JsonWarnings => _jsonViews.Where(v => v.Warning?.IsVisible == true).Select(v => v.Column).ToList();
+    /// JSON 트리 값 · 경로 복사에 쓰는 클립보드 (테스트용, 없으면 이 창의 클립보드)
+    public Func<string, Task>? Copier
+    {
+        get => _copier;
+        set
+        {
+            _copier = value;
+            foreach (var v in _jsonViews) v.View.Copier = value;
+        }
+    }
+    private Func<string, Task>? _copier;
 
     public RowDetailPanel(Action onClose)
     {
@@ -541,8 +572,10 @@ public sealed class RowDetailPanel : Border
     /// 컬럼별 글자 수 표시 (테스트용)
     public IReadOnlyList<string> CountTexts => _views.Select(v => v.Count?.Text ?? "").ToList();
 
-    public void Update(QueryResult result, GridRow row, int? rowNumber, RowEditor? editor)
+    public void Update(QueryResult result, GridRow row, int? rowNumber, RowEditor? editor, FKContext? fk = null)
     {
+        _fk = fk;
+        _row = row;
         Background = this.TryFindResource("PanelBackground", ActualThemeVariant, out var bg) ? bg as IBrush : null;
         _title.Text = editor == null ? Tr("행 상세") : Tr("행 편집");
         _number.Text = rowNumber is { } n ? Tr("%@번째 행", n) : Tr("새 행");
@@ -555,12 +588,22 @@ public sealed class RowDetailPanel : Border
             var st = editor?.Edits.State(row.Id, c.Id) ?? CellState.Normal;
             return (v == null ? "n" : "v") + (st == CellState.InsertedDefault ? "d" : "");
         }));
-        var key = $"{result.Id}|{row.Id}|{editor != null}|{deleted}|{shape}";
+        // 따라가기 정보는 결과를 다시 그릴 때마다 새로 만들어지므로 내용으로 비교한다
+        var fkKey = fk == null ? "-"
+            : $"{fk.Source.Name}|{string.Join(",", fk.Outgoing.Select(r => r.Id))}|{string.Join(",", fk.Incoming.Select(r => r.Id))}|{fk.PrimaryKeyValue(row.Values) != null}";
+        var key = $"{result.Id}|{row.Id}|{editor != null}|{deleted}|{shape}|{fkKey}";
         if (key != _key)
         {
             _key = key;
             Build(result, row, editor, deleted);
             return;
+        }
+        foreach (var (button, relation) in _fkButtons) button.IsEnabled = fk?.FollowSql(relation, row.Values) != null;
+        foreach (var (col, view, warning) in _jsonViews)
+        {
+            var value = col < row.Values.Count ? row.Values[col] : null;
+            view.SetText(value ?? "");
+            if (warning != null) warning.IsVisible = !JSONView.IsValid(value);
         }
         foreach (var (col, name, count, box) in _views)
         {
@@ -593,6 +636,10 @@ public sealed class RowDetailPanel : Border
     {
         _fields.Children.Clear();
         _views.Clear();
+        _fkButtons.Clear();
+        _jsonViews.Clear();
+        ReferencingButtons = [];
+        var fk = _fk;
         foreach (var column in result.Columns)
         {
             var col = column.Id;
@@ -601,7 +648,7 @@ public sealed class RowDetailPanel : Border
             var state = editor?.Edits.State(row.Id, col) ?? CellState.Normal;
             var name = new TextBlock { Text = column.Name, FontSize = 11, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             Color(name, state);
-            var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto") };
+            var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto,Auto") };
             head.Children.Add(name);
             if (editor?.Target.PrimaryKey.Any(k => string.Equals(k, column.Name, StringComparison.OrdinalIgnoreCase)) == true)
             {
@@ -609,19 +656,38 @@ public sealed class RowDetailPanel : Border
                 Grid.SetColumn(key, 1);
                 head.Children.Add(key);
             }
+            // 외래 키 칸 이름 옆 ↗ (추정 관계는 흐리게)
+            if (fk != null && fk.ByColumn.TryGetValue(col, out var relations))
+            {
+                var arrows = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 0, 0) };
+                foreach (var relation in relations)
+                {
+                    var r = relation;
+                    var b = Q.B("↗", () => { if (_fk is { } f && _row is { } cur) f.Follow(r, cur.Values); }, FKContext.FollowLabel(r), "hover");
+                    b.Opacity = r.Inferred ? 0.45 : 1;
+                    b.Padding = new Thickness(3, 0);
+                    b.IsEnabled = fk.FollowSql(r, row.Values) != null;
+                    Avalonia.Automation.AutomationProperties.SetName(b, FKContext.FollowLabel(r));
+                    arrows.Children.Add(b);
+                    _fkButtons.Add((b, r));
+                }
+                Grid.SetColumn(arrows, 2);
+                head.Children.Add(arrows);
+            }
             TextBlock? count = null;
             if (value != null)
             {
                 count = new TextBlock { Text = Tr("%@자", value.Length), FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
                 count.Foreground = this.TryFindResource("TertiaryText", ActualThemeVariant, out var t) ? t as IBrush : Brushes.Gray;
-                Grid.SetColumn(count, 3);
+                Grid.SetColumn(count, 4);
                 head.Children.Add(count);
                 var v = value;
                 var copy = new CopyButton { Text = v };
                 ToolTip.SetTip(copy, Tr("값 복사"));
-                Grid.SetColumn(copy, 4);
+                Grid.SetColumn(copy, 5);
                 head.Children.Add(copy);
             }
+            var type = ColumnType(column, editor, fk);
             var field = new StackPanel { Spacing = 4 };
             field.Children.Add(head);
             TextBox? box = null;
@@ -648,7 +714,20 @@ public sealed class RowDetailPanel : Border
                         if (_updatingBox || !b.IsEnabled) return;
                         editor.Set(col, LineEndings.Normalize(b.Text ?? ""));
                     };
-                    field.Children.Add(box);
+                    // JSON 칸: 원문 편집만 (정렬 · 트리는 지금 값 보기). JSON 이 깨지면 경고 (저장은 가능)
+                    if (IsJsonColumn(result, row, col, type))
+                    {
+                        var view = new JsonFieldView(value ?? "", type, box) { Copier = Copier };
+                        field.Children.Add(view);
+                        var warning = new TextBlock
+                        {
+                            Text = "⚠ " + Tr("JSON 형식이 아니에요"), FontSize = 11, Foreground = Q.Orange,
+                            IsVisible = !JSONView.IsValid(value),
+                        };
+                        field.Children.Add(warning);
+                        _jsonViews.Add((col, view, warning));
+                    }
+                    else field.Children.Add(box);
                     var nullBox = new CheckBox { Content = "NULL", IsChecked = value == null, FontSize = 11 };
                     nullBox.IsCheckedChanged += (_, _) => editor.Set(col, nullBox.IsChecked == true ? null : "");
                     var opts = Q.H(10, nullBox);
@@ -656,6 +735,12 @@ public sealed class RowDetailPanel : Border
                         opts.Children.Add(Q.B(Tr("DB 기본값 사용"), () => editor.ResetToDefault(col), null, "hover"));
                     field.Children.Add(opts);
                 }
+            }
+            else if (value != null && JsonCache.Detect(value, type).IsJSON)
+            {
+                var view = new JsonFieldView(value, type) { Copier = Copier };
+                field.Children.Add(view);
+                _jsonViews.Add((col, view, null));
             }
             else
             {
@@ -677,6 +762,45 @@ public sealed class RowDetailPanel : Border
             _fields.Children.Add(field);
             _views.Add((col, name, count, box));
         }
+        // 맨 아래: 참조하는 테이블 단추 목록 (기본 키가 단일 컬럼이고 값이 있을 때만)
+        if (fk != null && fk.Incoming.Count > 0 && fk.PrimaryKeyValue(row.Values) != null)
+        {
+            var list = new StackPanel { Spacing = 4 };
+            list.Children.Add(Q.Divider());
+            list.Children.Add(new TextBlock { Text = Tr("참조하는 테이블"), FontSize = 11, FontWeight = FontWeight.SemiBold, Classes = { "secondary" } });
+            var buttons = new List<Button>();
+            foreach (var relation in fk.Incoming)
+            {
+                var r = relation;
+                var b = Q.B("↙ " + FKContext.ReferencingLabel(r), () => { if (_fk is { } f && _row is { } cur) f.OpenReferencing(r, cur.Values); },
+                            Tr("이 행을 참조하는 행을 새 탭에서 조회해요"), "hover");
+                b.HorizontalAlignment = HorizontalAlignment.Left;
+                list.Children.Add(b);
+                buttons.Add(b);
+            }
+            ReferencingButtons = buttons;
+            _fields.Children.Add(list);
+        }
+    }
+
+    /// 결과 컬럼의 테이블 컬럼 타입 (한 테이블 조회 결과일 때만 알 수 있음)
+    private static string? ColumnType(QueryResult.Column column, RowEditor? editor, FKContext? fk)
+    {
+        var table = editor?.Target.Table ?? fk?.Source;
+        var name = editor != null && editor.Target.ColumnMap.TryGetValue(column.Id, out var mapped) ? mapped : column.Name;
+        return table?.Columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.ColumnType;
+    }
+
+    /// 편집 중 JSON 칸으로 다룰지: 타입이 json / jsonb 이거나 원래 값이 JSON
+    private static bool IsJsonColumn(QueryResult result, GridRow row, int column, string? type)
+    {
+        if (JSONView.IsJSONType(type)) return true;
+        // 행 id 는 보통 결과 안 위치와 같다 (큰 결과에서 끝까지 찾지 않게)
+        var o = row.Id >= 0 && row.Id < result.Rows.Count && result.Rows[row.Id].Id == row.Id
+            ? result.Rows[row.Id]
+            : result.Rows.FirstOrDefault(r => r.Id == row.Id);
+        var original = o != null && column < o.Values.Count ? o.Values[column] : null;
+        return original != null && JsonCache.Detect(original, null).IsJSON;
     }
 }
 
@@ -739,6 +863,7 @@ public sealed class ResultPane : UserControl
         };
         Status.OnPage = page =>
         {
+            Grid.EndActiveEditing();
             if (_tab is not { } t) return;
             var id = t.Id;
             _app.ConfirmDiscardingEdits([id], () => _app.Fire(() => _app.LoadPageAsync(page, id)));
@@ -746,7 +871,13 @@ public sealed class ResultPane : UserControl
         Status.OnCount = () => { if (_tab is { } t) _app.Fire(() => _app.CountRowsAsync(t.Id)); };
         Status.OnExport = () => { if (_tab is { } t) _app.ExportResult(t.Id); };
         Status.OnCancelExport = () => { if (_tab is { } t) _app.CancelExport(t.Id); };
-        Grid.OnSort = (column, ascending) => { if (_tab is { } t) _app.Fire(() => _app.SortResultAsync(t.Id, column, ascending)); };
+        Grid.OnSort = (column, ascending) =>
+        {
+            Grid.EndActiveEditing();
+            if (_tab is { } t) _app.Fire(() => _app.SortResultAsync(t.Id, column, ascending));
+        };
+        Grid.OnSetCell = (row, column, value) => { if (_tab is { } t) _app.SetCell(t.Id, row, column, value); };
+        EditBar.BeforeAction = Grid.EndActiveEditing;
         Grid.OnAddRow = () => { if (_tab is { } t && _app.AddRow(t.Id) is { } id) Grid.Select([id]); };
         Grid.OnDeleteRows = ids => { if (_tab is { } t) _app.ToggleDelete(t.Id, ids); };
         Grid.SetClipboard = text => _app.Dialogs.SetClipboardTextAsync(text);
@@ -921,6 +1052,8 @@ public sealed class ResultPane : UserControl
             else
             {
                 Grid.Editable = false;
+                Grid.EditableColumns = new HashSet<int>();
+                Grid.Fk = null;
                 ShowGrid(tab, result, new PendingEdits(), "", resultChanged, showDetail: false);
             }
             return;
@@ -952,6 +1085,8 @@ public sealed class ResultPane : UserControl
                 Vis(EditBar, _editDivider);
             }
             Grid.Editable = target is { Target: not null };
+            Grid.EditableColumns = target is { Target: { } editTarget } ? editTarget.ColumnMap.Keys.ToHashSet() : new HashSet<int>();
+            Grid.Fk = _app.FkContext(tab);
             Grid.CopyTableName = target is { Target: { } et } ? et.Table.Name : "table";
             Grid.Dialect = _app.Connections.TryGetValue(tab.ProfileId, out var info) ? info.Session?.Dialect : null;
             Grid.OnReachEnd = result.AppendMode ? () => _app.Fire(() => _app.LoadMoreAsync(tab.Id)) : null;
@@ -1006,6 +1141,6 @@ public sealed class ResultPane : UserControl
                 (col, value) => _app.SetCell(tabId, id, col, value),
                 col => _app.ResetInsertedCell(tabId, id, col));
         }
-        Detail.Update(result, row!, row!.Id >= PendingEdits.NewRowBase ? null : result.RowOffset + row.Id + 1, editor);
+        Detail.Update(result, row!, row!.Id >= PendingEdits.NewRowBase ? null : result.RowOffset + row.Id + 1, editor, _app.FkContext(tab));
     }
 }

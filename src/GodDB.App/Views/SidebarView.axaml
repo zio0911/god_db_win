@@ -36,6 +36,10 @@
       <Setter Property="MinHeight" Value="24"/>
       <Setter Property="Padding" Value="0"/>
     </Style>
+    <!-- 기본 선택색(진한 파랑)이 눈이 아프다는 의견으로 옅게 (Mac 1.4.0: 강조색 15%) -->
+    <Style Selector="TreeView#TableTree TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
+    </Style>
   </UserControl.Styles>
 
   <UserControl.DataTemplates>
@@ -124,7 +128,8 @@
         </Panel>
 
         <StackPanel IsVisible="{Binding ShowSchema}">
-          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,0,4">
+          <!-- 오른쪽 세로 스크롤바와 겹치지 않게 오른쪽 14 (Mac 1.4.0) -->
+          <Grid x:Name="SchemaHeader" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="4" Margin="2,10,14,4">
             <TextBlock Text="{Binding ContainerTitle}" Classes="secondary" VerticalAlignment="Center"/>
             <ComboBox Grid.Column="1" ItemsSource="{Binding Databases}" SelectedItem="{Binding CurrentDatabase}"
                       HorizontalAlignment="Stretch" MinWidth="50" ToolTip.Tip="{Binding CurrentDatabase}" Padding="6,2"/>

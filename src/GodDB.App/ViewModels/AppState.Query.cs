@@ -612,7 +612,10 @@ public sealed partial class AppState
             || !Connections.TryGetValue(tab.ProfileId, out var info) || info.Session is not { } session) return;
         var statements = ResultEditing.Statements(tab.Edits, target, result.Rows, session.Dialect);
         if (statements.Count == 0) return;
-        EditApply = new EditApplyRequest(tabId, statements);
+        EditApply = new EditApplyRequest(tabId, statements)
+        {
+            InvalidJsonColumns = JSONView.InvalidEdits(tab.Edits, target, [.. result.Columns.Select(c => c.Name)], result.Rows),
+        };
     }
 
     /// 트랜잭션으로 적용하고, 성공하면 같은 페이지를 다시 읽는다.

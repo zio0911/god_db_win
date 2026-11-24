@@ -26,6 +26,34 @@ public class ResultEditingTests
         Assert.Null(ResultEditing.SingleTable("UPDATE a SET x = 1"));
     }
 
+    /// 별칭 · 식 열은 실제 컬럼으로 보지 않는다 — SELECT status AS member_id 의 'member_id' 를 기본 키로 쓰면 다른 행이 바뀐다 (#194)
+    [Fact]
+    public void AliasedColumnsAreNotKeys()
+    {
+        // 다른 컬럼에 기본 키 이름 별칭 → 기본 키가 없음
+        var e = Assert.Throws<ResultEditingException>(() =>
+            ResultEditing.Target("SELECT status AS member_id, email FROM tb_member", ["member_id", "email"], [table]));
+        Assert.Equal(ResultEditingError.PrimaryKeyNotSelected, e.Kind);
+        Assert.Equal("member_id", e.Detail);
+        // 이름을 서로 바꿔 부름 → 둘 다 고칠 수 없는 열
+        var swapped = ResultEditing.Target("SELECT member_id, email AS status, status AS email FROM tb_member",
+                                           ["member_id", "status", "email"], [table]);
+        Assert.Equal(new Dictionary<int, string> { [0] = "member_id" }, swapped.ColumnMap);
+        // 식 · 상수는 고치지 않는다, 같은 이름 별칭 · 따옴표 · 테이블 이름 붙임 · TOP 은 그대로
+        var t = ResultEditing.Target("SELECT TOP (10) m.[member_id], `email` AS email, UPPER(status) AS status FROM tb_member m",
+                                     ["member_id", "email", "status"], [table]);
+        Assert.Equal(new Dictionary<int, string> { [0] = "member_id", [1] = "email" }, t.ColumnMap);
+        // * 와 섞어 쓰기
+        var s = ResultEditing.Target("SELECT m.*, 1 AS one FROM tb_member m", ["member_id", "email", "status", "one"], [table]);
+        Assert.Equal(new Dictionary<int, string> { [0] = "member_id", [1] = "email", [2] = "status" }, s.ColumnMap);
+        // 결과 열 수가 SELECT 목록과 안 맞으면 고치지 않음
+        var e2 = Assert.Throws<ResultEditingException>(() => ResultEditing.Target("SELECT * FROM tb_member", ["member_id", "email"], [table]));
+        Assert.Equal(ResultEditingError.ColumnsUnclear, e2.Kind);
+        // 문자열 · 함수 안의 쉼표 · FROM 은 목록을 나누지 않는다
+        Assert.Equal(["member_id", "CONCAT(email, ', from') AS x"],
+                     ResultEditing.SelectItems("SELECT member_id, CONCAT(email, ', from') AS x FROM tb_member"));
+    }
+
     [Fact]
     public void TargetNeedsPrimaryKey()
     {

@@ -18,6 +18,8 @@ public sealed class EditApplySheet : Window
     private readonly SelectableTextBlock _error = new() { Classes = { "error" }, IsVisible = false };
     private readonly ActivitySpinner _working = new(16) { IsVisible = false };
     public Button ApplyButton { get; }
+    /// JSON 칸이 깨졌을 때의 경고 (없으면 null)
+    public TextBlock? InvalidJsonWarning { get; }
 
     public EditApplySheet(AppState app, object value)
     {
@@ -41,6 +43,15 @@ public sealed class EditApplySheet : Window
                 Text = "⚠ " + Tr("운영 접속이에요. 적용하면 운영 데이터가 바뀌어요."),
                 Foreground = Q.Red, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap,
             });
+        if (_request.InvalidJsonColumns.Count > 0)
+        {
+            InvalidJsonWarning = new TextBlock
+            {
+                Text = "⚠ " + Tr("JSON 형식이 아니에요: %@", string.Join(", ", _request.InvalidJsonColumns)),
+                Foreground = Q.Orange, TextWrapping = TextWrapping.Wrap,
+            };
+            body.Children.Add(InvalidJsonWarning);
+        }
         var sql = string.Join("\n", _request.Statements);
         body.Children.Add(new Border
         {
