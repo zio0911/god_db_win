@@ -368,6 +368,13 @@ public sealed partial class AppState
 
     public async Task OpenQuickItemAsync(QuickOpen.Item item)
     {
+        if (item.Kind == QuickOpen.Kind.SavedQuery)
+        {
+            // 빠른 찾기 창이 닫힌 뒤에 빈칸 입력 창을 띄운다
+            await Task.Delay(350);
+            if (Guid.TryParse(item.Detail, out var id)) UseSavedQuery(id, run: true);
+            return;
+        }
         if (item.Kind == QuickOpen.Kind.Database)
         {
             await SelectDatabaseAsync(item.Name);

@@ -7,10 +7,15 @@ namespace GodDB.Core.Sql;
 public static class QuickOpen
 {
     /// 선언 순서가 같은 점수일 때의 정렬 순서 (Mac: Kind.allCases)
-    public enum Kind { Table, View, Procedure, Function, Trigger, Column, Database }
+    public enum Kind
+    {
+        Table, View, Procedure, Function, Trigger, Column, Database,
+        /// 저장 쿼리 (Schema = 폴더, Detail = 저장 쿼리 id)
+        SavedQuery,
+    }
 
     /// Mac 의 rawValue ("table", "view" …)
-    public static string RawValue(this Kind k) => k.ToString().ToLowerInvariant();
+    public static string RawValue(this Kind k) => k == Kind.SavedQuery ? "savedQuery" : k.ToString().ToLowerInvariant();
 
     /// <param name="Schema">이 객체가 있는 DB(스키마)</param>
     /// <param name="Detail">컬럼이면 테이블 이름, 아니면 코멘트 등</param>

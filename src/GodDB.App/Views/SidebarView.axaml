@@ -184,6 +184,7 @@
                       <MenuItem Header="{l:T '테이블 수정 (ALTER)…'}" Command="{Binding AlterCommand}"/>
                       <MenuItem Header="{l:T 'CREATE 문 보기'}" Command="{Binding DdlCommand}"/>
                       <MenuItem Header="{l:T '인덱스 상세 보기'}" Command="{Binding IndexesCommand}"/>
+                      <MenuItem Header="{l:T 'ID 로 찾기…'}" Command="{Binding FindByIdCommand}"/>
                       <MenuItem Header="{Binding DiagramTitle}" Command="{Binding DiagramCommand}"/>
                       <Separator/>
                       <MenuItem Header="{l:T '이름 복사'}" Command="{Binding CopyNameCommand}"/>

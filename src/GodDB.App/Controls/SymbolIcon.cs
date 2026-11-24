@@ -44,6 +44,8 @@ public enum Symbol
     ListIndent,
     /// list.bullet (목록)
     List,
+    /// bookmark (저장 쿼리)
+    Bookmark,
 }
 
 public sealed class SymbolIcon : Control
@@ -253,6 +255,10 @@ public sealed class SymbolIcon : Control
                 }
                 break;
             }
+            case Symbol.Bookmark:
+                // 위가 네모, 아래가 V 로 파인 책갈피 (선)
+                ctx.DrawGeometry(null, thin, Poly((3.5, 1.8), (12.5, 1.8), (12.5, 14.5), (8, 10.8), (3.5, 14.5)));
+                break;
             case Symbol.Download:
             {
                 // 쟁반 + 아래 화살표

@@ -2,7 +2,7 @@ using GodDB.App.Services;
 
 namespace GodDB.App.ViewModels;
 
-// ER 다이어그램 · 모델링 · 쿼리 튜닝 · AI 어시스턴트 · 시작 화면 · 새로운 기능
+// ER 다이어그램 · 모델링 · AI 어시스턴트 · 시작 화면 · 새로운 기능
 public sealed partial class AppState
 {
     // MARK: - ER 다이어그램
@@ -76,46 +76,6 @@ public sealed partial class AppState
 
     /// 리버스 엔지니어링은 연결된 SQL DB 가 있어야 한다
     public bool CanReverseEngineer => State.IsConnected && SelectedProfile?.Kind.IsSql() == true && Tables.Count > 0;
-
-    // MARK: - 쿼리 튜닝
-
-    /// 튜닝을 쓸 수 없는 이유 (쓸 수 있으면 null)
-    public string? TuningUnavailableReason => GodDB.Core.Ai.TuningJob.UnavailableReason(SelectedTab != null);
-
-    public void StartTuning(string sql)
-    {
-        if (SelectedTab is not { } tab || GodDB.Core.Ai.TuningJob.Normalize(sql) is not { } trimmed) return;
-        var job = new GodDB.Core.Ai.TuningJob(tab.Id, trimmed, TuningSettings.Model, Profile(tab.ProfileId)?.Name ?? "");
-        TuningJob = job;
-        if (!Connections.TryGetValue(tab.ProfileId, out var info) || info.Session is not { } session)
-        {
-            Fire(() => job.RunAsync(null!, tab.Database, [], hooks: TuningHooks(tab)));
-            return;
-        }
-        var known = info.Tables;
-        var db = tab.Database;
-        var hooks = TuningHooks(tab);
-        Fire(() => job.RunAsync(session, db, known, hooks: hooks));
-    }
-
-    private GodDB.Core.Ai.TuningJob.Hooks TuningHooks(QueryTab tab) => new()
-    {
-        Started = (message, prompt) => RunOnUi(() => Log(LogLevel.Info, LogSource.Query, message, detail: prompt)),
-        Finished = (message, streamed, auditResult) => RunOnUi(() =>
-            Log(LogLevel.Success, LogSource.Query, message, detail: streamed,
-                audit: new AuditRecord(AuditAction.Ai, AuditTarget(tab), auditResult))),
-        Failed = (e, context) =>
-        {
-            string? msg = null;
-            void Do() => msg = LogError(e is NullReferenceException ? new GodDbException(DbErrorKind.NotConnected) : e, LogSource.Query, context,
-                                        audit: new AuditRecord(AuditAction.Ai, AuditTarget(tab), Statement: "쿼리 튜닝"));
-            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) Do();
-            else Avalonia.Threading.Dispatcher.UIThread.Invoke(Do);
-            return msg ?? e.Message;
-        },
-    };
-
-    public void CancelTuning() => TuningJob?.Cancel();
 
     // MARK: - AI 어시스턴트
 
@@ -230,7 +190,7 @@ public sealed partial class AppState
             (Tr("PC · 네트워크 정보 확인 중 (감사 로그)"), async () => { await LogStartupAsync(); return null; }),
             (Tr("AI(Ollama) 연결 확인 중"), async () =>
             {
-                if (!TuningSettings.Enabled && !TuningSettings.AssistantEnabled) return Tr("꺼짐");
+                if (!TuningSettings.AssistantEnabled) return Tr("꺼짐");
                 var status = await WithTimeout(2.5, ct => TuningSettings.Client.StatusAsync(ct));
                 return status switch
                 {

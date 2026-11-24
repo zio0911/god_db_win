@@ -23,6 +23,9 @@ public abstract record OllamaStatus
     public IReadOnlyList<OllamaModel> RunningModels => this is Running r ? r.Models : [];
 }
 
+/// Ollama 대화 메시지 한 개 (Mac 판 OllamaClient.Message). 쿼리 튜닝(Tuning.cs)을 빼면서 여기로 옮겼다.
+public sealed record OllamaMessage(string Role, string Content);
+
 public sealed record OllamaModel(string Name, double SizeGB, string ParameterSize)
 {
     public string Id => Name;
@@ -264,20 +267,14 @@ public sealed class OllamaClient
     }
 }
 
-/// 쿼리 튜닝 · AI 설정 (Mac UserDefaults 와 같은 키)
+/// AI(Ollama) 설정 (Mac UserDefaults 와 같은 키). 저장 키는 예전 쿼리 튜닝 시절 이름을 그대로 써서 기존 설정이 유지된다.
+/// (Mac 1.4.0 은 쿼리 튜닝을 빼고 AISettings 로 이름을 바꿨다 — 켜기/끄기 설정도 함께 뺐다)
 public static class TuningSettings
 {
-    public const string EnabledKey = "GodDB.tuning.enabled";
     public const string UrlKey = "GodDB.tuning.url";
     public const string ModelKey = "GodDB.tuning.model";
-    /// AI 어시스턴트는 쿼리 튜닝과 따로 켜고 끈다 (Mac: AppSettings.assistantKey)
+    /// AI 어시스턴트 켜기 (Mac: AppSettings.assistantKey)
     public const string AssistantEnabledKey = "GodDB.assistant.enabled";
-
-    public static bool Enabled
-    {
-        get => Prefs.Get(EnabledKey, true);
-        set => Prefs.Set(EnabledKey, value);
-    }
 
     public static string Url
     {

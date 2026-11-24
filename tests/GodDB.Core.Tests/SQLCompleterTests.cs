@@ -86,4 +86,34 @@ public class DollarQuoteTests
         var tagged = SqlText.Statements("DO $body$ BEGIN PERFORM 1; END $body$; SELECT 1");
         Assert.Equal(2, tagged.Count);
     }
+
+    [Fact]
+    public void QuotedTableNames()
+    {
+        Assert.Equal("tb_member", SqlCompleter.Aliases("SELECT * FROM [dbo].[tb_member] m")["m"]);
+        Assert.Equal("tb_order", SqlCompleter.Aliases("SELECT * FROM \"public\".\"tb_order\" AS o")["o"]);
+        Assert.Equal("tb_member", SqlCompleter.Aliases("SELECT * FROM `shop`.`tb_member` x")["x"]);
+    }
+
+    // a.username 처럼 잘못 쓴 이름 → 그 테이블 컬럼을 비슷한 순서로 (빈 목록이 아니게)
+    [Fact]
+    public void WrongColumnShowsClosestColumns()
+    {
+        var tables = new List<GodDB.Core.Schema.TableMeta>
+        {
+            new("tb_member", columns:
+            [
+                new GodDB.Core.Schema.ColumnMeta("member_id", "bigint", false, position: 1),
+                new GodDB.Core.Schema.ColumnMeta("email", "varchar(100)", true, position: 2),
+            ]),
+        };
+        var s = SqlCompleter.Suggestions("mail", "m", "SELECT m.mail FROM tb_member m", tables);
+        Assert.Equal("email", s.First());
+        Assert.Equal(new HashSet<string> { "email", "member_id" }, s.ToHashSet());
+        Assert.Equal("name", SqlCompleter.Closest("username", ["id", "name", "email"]).First());
+        // Windows: Tab 은 비슷한 후보를 공통 접두어로 바꾸지 않고 목록으로 띄운다 (Mac SQLEditorView 의 같은 규칙)
+        var tab = Assert.IsType<TabAction.ShowList>(SqlCompleter.Tab("SELECT m.mail FROM tb_member m", 13, 0, tables));
+        Assert.Equal(["email", "member_id"], tab.Candidates);
+        Assert.Equal((9, 4), (tab.Start, tab.Length));
+    }
 }

@@ -302,6 +302,8 @@ public sealed partial class TableNodeViewModel : ObservableObject
     [RelayCommand] private void Alter() => App.AlteringTable = Table;
     [RelayCommand] private void Ddl() => App.Fire(() => App.OpenTableDdlAsync(Table));
     [RelayCommand] private void Indexes() => App.OpenIndexes(Name);
+    /// ID 로 찾기… (그 테이블이 미리 선택됨, Mac 1.4.0)
+    [RelayCommand] private void FindById() => App.OpenIdSearch(Name);
 
     [RelayCommand]
     private void Diagram()

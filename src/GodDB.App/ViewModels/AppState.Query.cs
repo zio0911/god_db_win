@@ -28,7 +28,8 @@ public sealed partial class AppState
         r.Columns.Count == 0 ? (r.Message ?? Tr("실행 완료")) : Tr("%@행", r.Rows.Count) + (r.HasMore ? "+" : "");
 
     /// 선택된 탭에서 sql 실행. explain 이면 실행 계획을 보여준다.
-    public async Task RunAsync(string sql, bool explain = false)
+    /// rowLimitOverride: 이번 실행만 다른 행 수 제한 (ID 로 찾기 — 값 개수 이상)
+    public async Task RunAsync(string sql, bool explain = false, int? rowLimitOverride = null)
     {
         if (SelectedTab is not { } tab) return;
         var tabId = tab.Id;
@@ -40,8 +41,9 @@ public sealed partial class AppState
         tab.Running = true;
         ArmRunTimeout(tabId);
         tab.Error = null;
-        var streaming = RowLimit == 0;
-        var limit = streaming ? StreamPageSize : RowLimit;
+        var effectiveLimit = rowLimitOverride ?? RowLimit;
+        var streaming = effectiveLimit == 0;
+        var limit = streaming ? StreamPageSize : effectiveLimit;
         try
         {
             if (await SessionForAsync(tab) is not { } session)
@@ -486,7 +488,7 @@ public sealed partial class AppState
         await RefreshSchemaAsync(request.ProfileId);
     }
 
-    /// 튜닝 결과 등을 탭 편집기 끝에 덧붙인다.
+    /// AI 가 만든 SQL 등을 탭 편집기 끝에 덧붙인다.
     public void InsertIntoTab(Guid tabId, string sql, string label)
     {
         Update(tabId, t =>
@@ -497,7 +499,6 @@ public sealed partial class AppState
             t.Text = text;
         });
         SelectTab(tabId);
-        TuningJob = null;
     }
 
     public void SelectResult(int index, Guid tabId)

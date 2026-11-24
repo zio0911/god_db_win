@@ -53,7 +53,6 @@ public static class SheetRegistry
 [SheetFor(nameof(AppState.ExportRequest), Placeholder = true)]
 [SheetFor(nameof(AppState.EditApply), Placeholder = true)]
 [SheetFor(nameof(AppState.TableAction), Placeholder = true)]
-[SheetFor(nameof(AppState.TuningJob), Placeholder = true)]
 [SheetFor(nameof(AppState.ShowQuickOpen), Placeholder = true)]
 [SheetFor(nameof(AppState.ShowHistory), Placeholder = true)]
 [SheetFor(nameof(AppState.AlteringTable), Placeholder = true)]
