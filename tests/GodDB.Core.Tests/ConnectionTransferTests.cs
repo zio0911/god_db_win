@@ -79,6 +79,24 @@ public class ConnectionTransferTests
         Assert.True(GodDB.Core.Platform.UserOnlyFile.IsRestricted(path));
     }
 
+    /// 같은 ID 로 가져올 때 서버 · 계정이 바뀌면 예전 비밀번호를 쓰지 않는다 (#197)
+    [Fact]
+    public void SavedPasswordOnlyForSameServer()
+    {
+        var old = new ConnectionProfile { Kind = DatabaseKind.Mysql, Name = "a", Host = "db.example.test", Port = 3306, Username = "app" };
+        var same = old with { Name = "이름만 바뀜", Host = "DB.example.test" };
+        Assert.True(ConnectionTransfer.SavedPasswordStillApplies(old, same));
+        foreach (var n in new[]
+                 {
+                     old with { Host = "other.example.test" }, old with { Port = 3307 }, old with { Username = "root" },
+                     old with { Kind = DatabaseKind.Postgres }, old with { Ssh = new SshConfig { Host = "bastion.example.test" } },
+                 })
+            Assert.False(ConnectionTransfer.SavedPasswordStillApplies(old, n));
+        old = old with { Ssh = new SshConfig { Host = "b.example.test", Username = "u" } };
+        var viaOther = old with { Ssh = new SshConfig { Host = "b.example.test", Username = "v" } };
+        Assert.False(ConnectionTransfer.SavedPasswordStillApplies(old, viaOther));
+    }
+
     [Fact]
     public void PasswordsNeedPassphrase()
     {

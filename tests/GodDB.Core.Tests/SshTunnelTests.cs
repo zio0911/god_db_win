@@ -20,6 +20,8 @@ public class SshTunnelTests
             "-o", "ConnectTimeout=10",
             "-p", "2222",
             "-L", "127.0.0.1:50000:10.0.0.5:6379",
+            // 1.4.3: 옵션 끝 표시 (#197)
+            "--",
             "ec2-user@bastion.example.com",
         ], args);
     }

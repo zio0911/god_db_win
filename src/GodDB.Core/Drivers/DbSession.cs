@@ -27,6 +27,15 @@ public static class TransactionSql
     };
     public static string CommitSql(this ISqlDialect d) => d.Kind == DatabaseKind.Mssql ? "COMMIT TRANSACTION" : "COMMIT";
     public static string RollbackSql(this ISqlDialect d) => d.Kind == DatabaseKind.Mssql ? "ROLLBACK TRANSACTION" : "ROLLBACK";
+
+    /// 전체 내보내기용: 모든 페이지를 같은 시점(스냅샷)으로 읽는 읽기 전용 트랜잭션 (#199).
+    /// SQL Server 는 스냅샷 격리가 DB 설정에 달려 있고, Redshift 는 기본이 직렬화라 null (지금처럼)
+    public static string? SnapshotBeginSql(this ISqlDialect d) => d.Kind switch
+    {
+        DatabaseKind.Mysql => "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY",
+        DatabaseKind.Postgres => d.IsRedshift() ? null : "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        _ => null,
+    };
 }
 
 /// 접속 하나 (필요하면 SSH 터널 포함). DB 종류에 맞는 드라이버와 문법(Dialect)을 쓴다. 쿼리는 순차 실행된다.
@@ -59,6 +68,8 @@ public sealed partial class DbSession : IAsyncDisposable
     // MARK: 트랜잭션 (자동 커밋 / 수동 커밋)
     public bool AutoCommit { get; private set; } = true;
     public bool InTransaction { get; private set; }
+    /// 전체 내보내기가 연 읽기 스냅샷 트랜잭션 안인지 (사용자 트랜잭션과 따로, #199)
+    private bool _inSnapshot;
     public int PendingChanges { get; private set; }
     public TransactionState TransactionState => new(AutoCommit, InTransaction, PendingChanges);
 
@@ -183,6 +194,12 @@ public sealed partial class DbSession : IAsyncDisposable
                 catch (Exception) when (!ct.IsCancellationRequested) { }
             }
             if (dialect.SessionSetupSql is { } setup) { try { await d.QueryAsync(setup, 0, ct); } catch (Exception) when (!ct.IsCancellationRequested) { } }
+            // 실행 시간 제한을 서버 세션에도 (#198). 지원하지 않는 서버(MariaDB 등)면 무시
+            var limit = QueryTimeLimit.Seconds;
+            if (limit > 0 && dialect.StatementTimeoutSql(limit * 1000) is { } timeout)
+            {
+                try { await d.QueryAsync(timeout, 0, ct); } catch (Exception) when (!ct.IsCancellationRequested) { }
+            }
             // 서버 측에서도 변경을 거부하도록 세션을 읽기전용으로 설정
             if (readOnly && dialect.ReadOnlySessionSql is { } ro) await d.QueryAsync(ro, 0, ct);
             int? sessionId = null;
@@ -303,7 +320,7 @@ public sealed partial class DbSession : IAsyncDisposable
     /// 롤백하므로 문장 안에서 바꾼 세션 설정(set_config(…, false) 등)도 남지 않는다. 앱 쪽 검사는 그대로 먼저 한다.
     internal async Task<RawResult> ReadOnlyGuardedRawAsync(string sql, CancellationToken ct = default)
     {
-        if (!Profile.ReadOnly || Dialect.Kind != DatabaseKind.Postgres || InTransaction) return await RawAsync(sql, ct);
+        if (!Profile.ReadOnly || Dialect.Kind != DatabaseKind.Postgres || InTransaction || _inSnapshot) return await RawAsync(sql, ct);
         await RawAsync("BEGIN READ ONLY", ct);
         try
         {
@@ -318,13 +335,31 @@ public sealed partial class DbSession : IAsyncDisposable
         }
     }
 
+    /// 읽기 스냅샷 시작 (#199). 사용자가 연 트랜잭션이 있거나 지원하지 않는 DB 면 열지 않고 false
+    internal async Task<bool> BeginSnapshotAsync(CancellationToken ct = default)
+    {
+        if (InTransaction || _inSnapshot || Dialect.SnapshotBeginSql() is not { } sql) return false;
+        try { await RawAsync(sql, ct); }
+        catch (Exception) when (!ct.IsCancellationRequested) { return false; }
+        _inSnapshot = true;
+        return true;
+    }
+
+    /// 읽기 스냅샷 끝 (읽기 전용이라 COMMIT 과 ROLLBACK 이 같다)
+    internal async Task EndSnapshotAsync()
+    {
+        if (!_inSnapshot) return;
+        _inSnapshot = false;
+        try { await RawAsync(Dialect.RollbackSql(), CancellationToken.None); } catch { }
+    }
+
     private static readonly HashSet<string> TransactionControl = ["BEGIN", "START", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "SET", "USE"];
     private static readonly HashSet<string> Ddl = ["CREATE", "ALTER", "DROP", "RENAME", "TRUNCATE"];
 
     /// 수동 커밋 모드에서 쓰기 문장이면 먼저 트랜잭션을 연다
     private async Task BeginIfNeededAsync(string sql, CancellationToken ct)
     {
-        if (AutoCommit || InTransaction) return;
+        if (AutoCommit || InTransaction || _inSnapshot) return;
         var kw = SqlText.FirstKeyword(SqlText.StripComments(sql));
         if (SqlText.IsReadOnly(sql, Dialect.Kind) || TransactionControl.Contains(kw)) return;
         // MySQL 의 DDL 은 어차피 자동 커밋되므로 트랜잭션을 열지 않는다

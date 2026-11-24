@@ -418,6 +418,15 @@ public sealed partial class AppState
     /// 고른 접속을 합친다. 비밀번호가 있으면 보관소에 넣는다.
     public void ImportProfiles(IReadOnlyList<ConnectionProfile> incoming, IReadOnlyDictionary<Guid, string> passwords, string fileName)
     {
+        // 같은 ID 인데 서버 · 계정이 바뀐 접속은 예전 비밀번호를 지운다 (새 비밀번호가 함께 오면 아래에서 다시 넣음, #197)
+        foreach (var p in incoming)
+        {
+            if (Profiles.FirstOrDefault(o => o.Id == p.Id) is { } old && !ConnectionTransfer.SavedPasswordStillApplies(old, p))
+            {
+                Secrets.DeletePassword(p.Id);
+                SessionPasswords.Remove(p.Id);
+            }
+        }
         var merged = ConnectionTransfer.Merge(incoming, Profiles);
         Profiles.Clear();
         foreach (var p in merged) Profiles.Add(p);

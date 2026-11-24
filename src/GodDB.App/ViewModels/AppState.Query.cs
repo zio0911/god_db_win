@@ -537,14 +537,14 @@ public sealed partial class AppState
     // MARK: - 쿼리 취소 · 실행 시간 제한
 
     /// 설정 > 쿼리 > 실행 시간 제한 (초, 0 이면 없음)
-    public const string QueryTimeoutKey = "queryTimeoutSeconds";
+    public const string QueryTimeoutKey = QueryTimeLimit.Key;
 
     /// 실행 시작을 기록하고, 제한 시간이 있으면 넘었을 때 취소한다
     public void ArmRunTimeout(Guid tabId)
     {
         var started = DateTime.Now;
         Update(tabId, t => t.RunStarted = started);
-        var seconds = Prefs.Get(QueryTimeoutKey, 0);
+        var seconds = QueryTimeLimit.Seconds;
         if (seconds <= 0) return;
         Fire(async () =>
         {

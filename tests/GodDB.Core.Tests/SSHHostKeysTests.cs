@@ -221,3 +221,42 @@ public class SSHHostKeysTests
         Assert.Null(SshTunnel.FindTool("ssh-keyscan", true, @"C:\Windows", "", _ => false));
     }
 }
+
+/// ssh 인자: 호스트 앞 "--", '-' 로 시작 · 공백 값 거절 (#197)
+public class SSHArgumentTests
+{
+    [Fact]
+    public void DestinationAfterDoubleDash()
+    {
+        var args = SshTunnel.Arguments(new SshConfig { Host = "bastion.example.test", Port = 22, Username = "ec2-user" },
+            localPort: 5000, remoteHost: "db.internal", remotePort: 3306);
+        Assert.Equal(["--", "ec2-user@bastion.example.test"], args.TakeLast(2));
+    }
+
+    [Fact]
+    public void RejectsOptionLikeValues()
+    {
+        foreach (var (host, user) in new[] { ("-oProxyCommand=x", "u"), ("h.example.test", "-l"), ("h example", "u"), ("h.example.test", "a\nb") })
+        {
+            var e = Assert.Throws<SshTunnelException>(() => SshTunnel.Validate(new SshConfig { Host = host, Username = user }, remoteHost: "db"));
+            Assert.Equal(SshTunnelErrorKind.InvalidValue, e.Kind);
+        }
+        Assert.Throws<SshTunnelException>(() => SshTunnel.Validate(new SshConfig { Host = "h", Username = "u" }, remoteHost: "-x"));
+        SshTunnel.Validate(new SshConfig { Host = "bastion.example.test", Username = "ec2-user" }, remoteHost: "db.internal");
+    }
+}
+
+/// 화면 테스트 환경변수는 테스트용 빌드에서만 (#197).
+/// Mac 은 테스트 복사본 번들 ID 로 가르고, Windows 는 Debug 빌드로 가른다 (배포본은 Release 빌드)
+public class UITestHookTests
+{
+    [Fact]
+    public void OnlyForTestBuild()
+    {
+        var env = new Dictionary<string, string?> { ["GODDB_UI_TEST"] = "1" };
+        Assert.True(AppPaths.IsUiTest(env.GetValueOrDefault, debugBuild: true));
+        Assert.False(AppPaths.IsUiTest(env.GetValueOrDefault, debugBuild: false));
+        Assert.False(AppPaths.IsUiTest(new Dictionary<string, string?>().GetValueOrDefault, debugBuild: true));
+        Assert.False(AppPaths.IsUiTest(new Dictionary<string, string?> { ["GODDB_UI_TEST"] = "0" }.GetValueOrDefault, debugBuild: true));
+    }
+}

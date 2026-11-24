@@ -23,7 +23,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         App = app;
         _dialogs = dialogs ?? app?.Dialogs ?? new NullDialogs();
         _language = L10n.Language;
-        _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, Prefs.Get(AppState.QueryTimeoutKey, 0)));
+        _queryTimeoutIndex = Math.Max(0, Array.IndexOf(TimeoutValues, QueryTimeLimit.Seconds));
         _confirmDangerous = RunConfirm.ConfirmDangerous;
         _prodIdleIndex = Math.Max(0, Array.IndexOf(AppState.ProdIdleChoices, Prefs.Get(AppState.ProdIdleMinutesKey, 30)));
         _logFileEnabled = LogFile.Enabled;

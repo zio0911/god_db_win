@@ -156,6 +156,13 @@ public static class ConnectionTransfer
     public static HashSet<Guid> DefaultSelection(IEnumerable<ConnectionProfile> incoming, IReadOnlyList<ConnectionProfile> existing) =>
         incoming.Where(p => Action(p, existing) is ImportAction.Add).Select(p => p.Id).ToHashSet();
 
+    /// 같은 ID 로 가져올 때 예전에 저장한 비밀번호를 계속 써도 되는지: 종류 · 호스트 · 포트 · 사용자 · SSH 경유가 같을 때만 (#197).
+    /// 다른 서버나 계정으로 바뀌었는데 옛 비밀번호를 보내지 않게, 아니면 지우고 처음 연결할 때 묻는다
+    public static bool SavedPasswordStillApplies(ConnectionProfile old, ConnectionProfile @new) =>
+        old.Kind == @new.Kind && string.Equals(old.Host, @new.Host, StringComparison.OrdinalIgnoreCase) && old.Port == @new.Port
+        && old.Username == @new.Username
+        && string.Equals(old.Ssh?.Host, @new.Ssh?.Host, StringComparison.OrdinalIgnoreCase) && old.Ssh?.Username == @new.Ssh?.Username;
+
     /// 가져온 접속을 기존 목록에 합친다. 같은 id 는 덮어쓰고, 새 접속은 뒤에 붙인다.
     /// 이름이 다른 접속과 겹치면 " (2)" 를 붙인다. 넘긴 목록의 항목은 바꾸지 않는다 (복사본을 넣는다).
     public static List<ConnectionProfile> Merge(IEnumerable<ConnectionProfile> incoming, IEnumerable<ConnectionProfile> existing)

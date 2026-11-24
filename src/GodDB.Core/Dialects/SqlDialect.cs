@@ -18,6 +18,7 @@ public abstract partial class SqlDialect : ISqlDialect
     public virtual string ApplyingLimit(string sql, int limit) => SqlText.ApplyingLimit(sql, limit);
     public abstract string? ReadOnlySessionSql { get; }
     public virtual string? SessionSetupSql => null;
+    public virtual string? StatementTimeoutSql(int milliseconds) => null;
     public abstract string SessionIdSql { get; }
     public abstract string CancelSql(int sessionId);
 

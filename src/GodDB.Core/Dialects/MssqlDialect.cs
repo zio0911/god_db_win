@@ -29,6 +29,8 @@ public sealed partial class MssqlDialect : SqlDialect
 
     /// SQL Server 는 세션 단위 읽기전용 설정이 없어서 앱 검사만 한다.
     public override string? ReadOnlySessionSql => null;
+    /// SQL Server 는 세션 단위 실행 시간 제한이 없다 (앱 쪽 제한만)
+    public override string? StatementTimeoutSql(int milliseconds) => null;
     public override string SessionIdSql => "SELECT @@SPID";
     /// SQL Server 는 쿼리만 멈추는 명령이 없어 세션을 끊는다 (DBSession 이 다시 연결한다)
     public override string CancelSql(int sessionId) => $"KILL {sessionId}";

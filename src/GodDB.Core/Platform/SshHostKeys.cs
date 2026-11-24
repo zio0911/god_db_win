@@ -175,7 +175,7 @@ public static class SshHostKeys
     {
         var args = new List<string> { "-G", "-p", config.Port.ToString(CultureInfo.InvariantCulture) };
         if (config.Username.Length > 0) args.AddRange(["-l", config.Username]);
-        args.Add(config.Host);
+        args.AddRange(["--", config.Host]);
         var output = Tool("ssh") is { } ssh ? Run(ssh, args, timeout: TimeSpan.FromSeconds(5)) : RunResult.Failed;
         return ParseConfig(output.Status == 0 ? output.Stdout : "", config.Host, config.Port);
     }
@@ -198,7 +198,7 @@ public static class SshHostKeys
     public static SshHostScan Scan(string host, int port, string pattern, string displayHost, int displayPort, int timeout = 5)
     {
         var keyscan = Tool("ssh-keyscan") ?? throw new SshTunnelException(SshTunnelErrorKind.SshNotFound);
-        var r = Run(keyscan, ["-T", timeout.ToString(CultureInfo.InvariantCulture), "-p", port.ToString(CultureInfo.InvariantCulture), host],
+        var r = Run(keyscan, ["-T", timeout.ToString(CultureInfo.InvariantCulture), "-p", port.ToString(CultureInfo.InvariantCulture), "--", host],
             timeout: TimeSpan.FromSeconds(timeout + 5));
         var lines = KeyLines(r.Stdout, pattern);
         if (lines.Count == 0)
@@ -214,6 +214,7 @@ public static class SshHostKeys
     /// 연결 전 확인: 알려진 서버면 그냥 지나가고, 모르면 키를 받아 Unknown 을 던진다.
     public static void Check(SshConfig config, string? godDBFile = null, string? userFile = null)
     {
+        SshTunnel.Validate(config, remoteHost: "");
         var resolved = Resolve(config);
         if (IsKnown(resolved.Pattern, [userFile ?? UserFile, godDBFile ?? GodDBFile])) return;
         var scan = Scan(resolved.Hostname, resolved.Port, resolved.Pattern, config.Host, config.Port);

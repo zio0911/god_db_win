@@ -14,12 +14,21 @@ public sealed partial class PostgresDialect(bool redshift = false) : SqlDialect
 
     public override string QuoteIdent(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
 
-    public override string QuoteString(string value) => "'" + value.Replace("'", "''") + "'";
+    /// 문자열 상수. 백슬래시가 있으면 E'…' 로 쓰고 \\ 로 바꾼다 — 서버의 standard_conforming_strings 설정과
+    /// 상관없이 같은 값으로 읽힌다 (#197). Redshift 는 E'' 를 지원하지 않아 예전처럼 둔다.
+    public override string QuoteString(string value)
+    {
+        var quoted = value.Replace("'", "''");
+        if (Redshift || !value.Contains('\\')) return "'" + quoted + "'";
+        return "E'" + quoted.Replace("\\", "\\\\") + "'";
+    }
 
     public override string? ReadOnlySessionSql => "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY";
     /// 큰 테이블의 순차 스캔은 기본으로 직전 스캔이 멈춘 곳부터 시작한다 (synchronize_seqscans).
     /// 그러면 ORDER BY 없는 결과를 LIMIT/OFFSET 으로 나눠 받을 때 페이지끼리 행이 겹치거나 빠진다. 항상 처음부터 읽게 한다.
     public override string? SessionSetupSql => Redshift ? null : "SET synchronize_seqscans = off";
+    /// 모든 문장에 적용 (Redshift 도 같은 변수, 밀리초)
+    public override string? StatementTimeoutSql(int milliseconds) => $"SET statement_timeout = {milliseconds}";
     public override string SessionIdSql => "SELECT pg_backend_pid()";
     public override string CancelSql(int sessionId) => $"SELECT pg_cancel_backend({sessionId})";
 

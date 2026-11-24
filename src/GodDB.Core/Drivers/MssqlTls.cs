@@ -23,7 +23,8 @@ namespace GodDB.Core.Drivers;
 //    - 고정 인증서(또는 통과 + 고정 지문 있음): 미리 받은 서버 인증서를 본인만 읽는 임시 파일에 써서 ServerCertificate 로 넘긴다.
 //      SqlClient 는 로그인하는 그 TLS 연결의 인증서가 이 파일과 **바이트까지 같아야** 통과시킨다 = 지문 고정을 SqlClient 가 직접 한다.
 //      Mac(FreeTDS)은 지문을 비교하지 못해 두 연결 사이에 인증서가 바뀌면 모를 수 있는 틈이 있었지만, 여기서는 그 틈이 없다.
-//    - 확인 끔 · SSH 터널(고정 없음): 미리 받지 않고 Encrypt=Mandatory · TrustServerCertificate=true (암호화만).
+//    - 확인 끔: 미리 받지 않고 Encrypt=Mandatory · TrustServerCertificate=true (암호화만).
+//    - SSH 터널도 1.4.3 부터 위와 같이 미리 받아 원래 호스트 이름(HostNameInCertificate)으로 확인한다 (#197).
 //    왜 이 방식인가: SqlClient 7 은 RemoteCertificateValidationCallback 을 열어 두지 않는다. 연결 문자열로 할 수 있는 것은
 //    Encrypt · TrustServerCertificate · HostNameInCertificate · ServerCertificate 뿐이라, 확인 창에 보여 줄 인증서 정보와
 //    지문은 미리 받기로 얻고, 실제 연결에서의 확인은 위 옵션으로 SqlClient 에 맡긴다.

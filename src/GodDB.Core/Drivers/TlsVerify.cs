@@ -15,15 +15,17 @@ namespace GodDB.Core.Drivers;
 
 /// 접속할 때 인증서를 어떻게 확인할지
 /// - Verify: 서버 인증서 확인 (접속 편집의 "서버 인증서 확인")
-/// - Hostname: 체인 · 이름을 확인할 호스트 이름. null 이면 SSH 터널 경유라 지문만 확인한다.
+/// - Hostname: 체인 · 이름을 확인할 호스트 이름 (SSH 터널이어도 원래 DB 호스트). null 이면 지문만 확인한다.
 /// - Pin: 고정한 인증서 지문 (SHA-256)
 public sealed record TlsPolicy(bool Verify, string? Hostname, string? Pin)
 {
-    /// 접속 정보로 정한다. 터널이면 Hostname 없음.
+    /// 접속 정보로 정한다. SSH 터널로 붙어도 인증서 이름은 원래 DB 호스트로 확인한다 (#197).
+    /// (예전에는 터널이면 이름을 보지 않아, 고정하지 않은 접속은 어떤 인증서든 받았다.)
+    /// 이름이 안 맞으면 "처음 보는 인증서" 확인 창이 뜨고, 고정하면 지문으로 붙는다.
     public static TlsPolicy Of(ConnectionProfile profile, string? host = null)
     {
         var pin = string.IsNullOrEmpty(profile.TlsPinSHA256) ? null : profile.TlsPinSHA256;
-        return new TlsPolicy(profile.TlsVerify, profile.Ssh == null ? host ?? profile.Host : null, pin);
+        return new TlsPolicy(profile.TlsVerify, host ?? profile.Host, pin);
     }
 }
 

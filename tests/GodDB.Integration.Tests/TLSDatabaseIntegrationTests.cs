@@ -130,7 +130,8 @@ public class TLSDatabaseIntegrationTests
     [Fact]
     public async Task MssqlTunnelWithoutPinDoesNotProbe()
     {
-        // SSH 터널 · 고정 없음: 미리 받지 않고 암호화만 (상태 "확인 안 함(SSH 터널)")
+        // 확인할 이름 · 고정 없음: 미리 받지 않고 암호화만 (상태 "확인 안 함(SSH 터널)").
+        // 1.4.3 부터 SSH 터널도 원래 호스트 이름으로 확인하므로(#197) 접속 정보로는 이 정책이 나오지 않는다 — 드라이버 동작만 본다
         var port = TestDb.Port(DatabaseKind.Mssql);
         var (p, pw) = Mssql();
         var e = new DriverEndpoint

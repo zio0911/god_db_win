@@ -6,10 +6,25 @@ namespace GodDB.Core;
 /// 테스트나 화면 자동 테스트는 GODDB_DATA_DIR 로 다른 폴더를 쓴다 (실제 접속 목록을 건드리지 않음).
 public static class AppPaths
 {
-    private static string? Override => Environment.GetEnvironmentVariable("GODDB_DATA_DIR") is { Length: > 0 } d ? d : null;
+    /// Debug 빌드인지. 배포본(Setup.exe · Portable.zip)은 Release 빌드다
+#if DEBUG
+    internal static readonly bool DebugBuild = true;
+#else
+    internal static readonly bool DebugBuild = false;
+#endif
 
-    /// 화면 자동 테스트 실행인지
-    public static bool UiTest => Environment.GetEnvironmentVariable("GODDB_UI_TEST") == "1";
+    /// 테스트용 데이터 폴더. Debug 빌드나 테스트 프로세스에서만 (Mac: 화면 테스트 복사본에서만, #197)
+    private static string? Override => (DebugBuild || Platform.LocalDataCrypto.IsTestProcess)
+        && Environment.GetEnvironmentVariable("GODDB_DATA_DIR") is { Length: > 0 } d ? d : null;
+
+    /// 화면 자동 테스트 실행인지.
+    /// 환경변수만으로는 켜지지 않는다 — 정식 앱을 GODDB_UI_TEST=1 로 띄워 감사 로그를 끄거나
+    /// 데이터 폴더 · 비밀번호를 바꾸지 못하게, Debug 빌드일 때만 (#197).
+    /// Mac 은 테스트 복사본 번들 ID 로 가른다. Windows 는 번들 ID 가 없어 빌드 구성으로 가른다.
+    public static bool UiTest => IsUiTest(Environment.GetEnvironmentVariable, DebugBuild);
+
+    internal static bool IsUiTest(Func<string, string?> env, bool debugBuild) =>
+        debugBuild && env("GODDB_UI_TEST") == "1";
 
     public static string DataDirectory => Override ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GodDB");

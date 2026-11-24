@@ -7,7 +7,12 @@ using static GodDB.Core.L10n;
 
 namespace GodDB.Core.Platform;
 
-public enum SshTunnelErrorKind { NoFreePort, Exited, Timeout, SshNotFound }
+public enum SshTunnelErrorKind
+{
+    NoFreePort, Exited, Timeout, SshNotFound,
+    /// 호스트 · 사용자 이름이 '-' 로 시작하거나 공백이 들어 있음 (ssh 옵션으로 읽힐 수 있어 거절, #197)
+    InvalidValue,
+}
 
 public sealed class SshTunnelException : Exception
 {
@@ -26,6 +31,7 @@ public sealed class SshTunnelException : Exception
         SshTunnelErrorKind.NoFreePort => Tr("로컬 포트를 확보하지 못했어요."),
         SshTunnelErrorKind.Exited => Tr("SSH 터널 연결에 실패했어요.\n%@", detail),
         SshTunnelErrorKind.Timeout => Tr("SSH 터널이 15초 안에 열리지 않았어요."),
+        SshTunnelErrorKind.InvalidValue => Tr("SSH 호스트 · 사용자 이름에 쓸 수 없는 값이에요: %@ ('-' 로 시작하거나 공백 포함)", detail),
         // Windows 판에만 있는 문장 (Mac 은 /usr/bin/ssh 가 항상 있음)
         _ => Tr("ssh 프로그램을 찾지 못했어요. Windows 설정 > 시스템 > 선택적 기능에서 \"OpenSSH 클라이언트\"를 설치해 주세요."),
     };
@@ -51,8 +57,20 @@ public sealed class SshTunnel : IDisposable
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { foreach (var t in Live.Keys) t.Stop(); };
     }
 
+    /// ssh 에 넘기는 값 검사: '-' 로 시작하면 옵션으로 읽히고, 공백 · 줄바꿈은 정상 호스트에 없다 (#197)
+    public static void Validate(SshConfig config, string remoteHost)
+    {
+        foreach (var v in new[] { config.Host, config.Username, remoteHost })
+        {
+            if (v.Length == 0) continue;
+            if (v.StartsWith('-') || v.Any(char.IsWhiteSpace))
+                throw new SshTunnelException(SshTunnelErrorKind.InvalidValue, v);
+        }
+    }
+
     public SshTunnel(SshConfig config, string remoteHost, int remotePort)
     {
+        Validate(config, remoteHost);
         LocalPort = FindFreePort() ?? throw new SshTunnelException(SshTunnelErrorKind.NoFreePort);
         _config = config;
         _remoteHost = remoteHost;
@@ -79,6 +97,8 @@ public sealed class SshTunnel : IDisposable
         ]);
         var key = ExpandTilde(config.KeyPath);
         if (key.Length > 0) args.AddRange(["-i", key, "-o", "IdentitiesOnly=yes"]);
+        // 옵션 끝 표시 — 호스트가 옵션으로 읽히지 않게 (#197)
+        args.Add("--");
         args.Add(config.Username.Length == 0 ? config.Host : $"{config.Username}@{config.Host}");
         return args;
     }

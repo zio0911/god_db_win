@@ -120,10 +120,24 @@ public class TLSVerifyTests
         Assert.Null(TlsPolicy.Of(p).Pin);
         p.TlsPinSHA256 = "AA:BB";
         p.Ssh = new SshConfig { Host = "bastion" };
-        // 터널이면 이름 확인 없음, 고정 지문만
-        Assert.Equal(new TlsPolicy(true, null, "AA:BB"), TlsPolicy.Of(p));
+        // 터널이어도 원래 DB 호스트 이름으로 확인 (#197) — 고정 지문은 함께
+        Assert.Equal(new TlsPolicy(true, "db.example.com", "AA:BB"), TlsPolicy.Of(p));
         p.TlsVerify = false;
         Assert.False(TlsPolicy.Of(p).Verify);
+    }
+
+    /// SSH 터널로 붙어도 인증서 이름을 원래 DB 호스트로 확인한다 — 고정 안 한 터널 접속이 아무 인증서나 받지 않게 (#197)
+    /// (Mac 은 TLS integration 묶음에 있지만 서버가 필요 없는 검사라 여기서 늘 돈다)
+    [Fact]
+    public void TunnelStillChecksHostName()
+    {
+        var p = new ConnectionProfile { Kind = DatabaseKind.Postgres, Name = "t", Host = "db.example.test", Port = 5432 };
+        p.Ssh = new SshConfig { Host = "bastion.example.test" };
+        var policy = TlsPolicy.Of(p);
+        Assert.Equal("db.example.test", policy.Hostname);
+        // 체인을 확인하므로, 고정 없이 확인 안 된 인증서는 "확인 안 함" 으로 통과하지 않고 거부(확인 창)
+        Assert.Equal(TlsVerdict.Untrusted(TlsFailureReason.NameMismatch),
+            TlsVerify.Decide(policy.Hostname != null, false, [TlsFailureReason.NameMismatch], "AA", policy.Pin));
     }
 
     // MARK: 프로필 저장 형식

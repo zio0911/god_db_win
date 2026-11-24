@@ -38,6 +38,8 @@ public interface ISqlDialect
     string? ReadOnlySessionSql { get; }
     /// 연결 직후 항상 실행할 세션 설정 (실패해도 접속은 계속)
     string? SessionSetupSql { get; }
+    /// 서버 세션의 실행 시간 제한 (밀리초). 지원하지 않으면 null
+    string? StatementTimeoutSql(int milliseconds);
     /// 이 연결의 서버 쪽 세션 번호 (실행 중인 쿼리 취소에 쓴다)
     string SessionIdSql { get; }
     /// 다른 연결에서 실행해 그 세션의 쿼리를 멈추는 SQL (id 는 숫자만)
