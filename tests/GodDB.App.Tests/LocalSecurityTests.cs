@@ -120,7 +120,7 @@ public class LocalSecurityTests
         {
             Calls.Add("check");
             Feed = entry.FeedBaseUrl;
-            return Task.FromResult(found ?? entry.PackageVersion);
+            return Task.FromResult<string?>(found ?? entry.PackageVersion);
         }
         public Task DownloadAsync(Action<int> progress, CancellationToken ct) { Calls.Add("download"); progress(100); return Task.CompletedTask; }
         public void ApplyAndRestart() => Calls.Add("apply");

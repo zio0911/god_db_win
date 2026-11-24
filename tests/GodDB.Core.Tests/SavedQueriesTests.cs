@@ -186,7 +186,7 @@ public class SavedQueriesTests
         Assert.Equal(t0.AddSeconds(9), lib[id]?.LastUsedAt);
         var copy = lib.Duplicate(id, " 사본");
         Assert.Equal("새 이름 사본", copy?.Name);
-        Assert.True(copy?.LastUsedAt == null && copy.LastValues["a"] == "5" && copy.LastValues.Count == 1 && copy.Id != id);
+        Assert.True(copy?.LastUsedAt == null && copy!.LastValues["a"] == "5" && copy.LastValues.Count == 1 && copy.Id != id);
         lib.Delete(id);
         Assert.Equal([copy!.Id], lib.Queries.Select(q => q.Id));
     }

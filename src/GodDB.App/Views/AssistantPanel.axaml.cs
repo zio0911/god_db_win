@@ -131,9 +131,24 @@ public partial class AssistantPanel : UserControl
                 CornerRadius = new CornerRadius(5),
                 Padding = new Thickness(6, 2),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Child = new TextBlock { Text = $"{icon}  {text}", FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis },
+                Child = ChipContent(icon, text),
             });
         }
+    }
+
+    /// 칩 한 개: 테이블 칩(▦)은 Mac "tablecells" 처럼 파란 격자 아이콘으로 (글꼴에 따라 ▦ 이 검은 네모로 보임)
+    private static Control ChipContent(string icon, string text)
+    {
+        var label = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
+        if (icon != Glyphs.Table)
+        {
+            label.Text = $"{icon}  {text}";
+            return label;
+        }
+        label.Text = text;
+        var grid = new TableCellsIcon { Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 6, 0) };
+        DockPanel.SetDock(grid, Dock.Left);
+        return new DockPanel { Children = { grid, label } };
     }
 
     /// 데이터 찾기 모드 표시 · 입력 칸 안내
