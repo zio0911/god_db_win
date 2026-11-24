@@ -85,15 +85,19 @@ public sealed partial class CompareViewModel : ObservableObject
     partial void OnRunningChanged(bool value)
     {
         CompareStateChanged();
-        OnPropertyChanged(nameof(ShowEmpty));
-        OnPropertyChanged(nameof(ShowError));
-        OnPropertyChanged(nameof(ShowResult));
+        ResultVisibilityChanged();
     }
-    partial void OnErrorChanged(string? value)
+    partial void OnErrorChanged(string? value) => ResultVisibilityChanged();
+
+    /// ShowResult 에 따라 바뀌는 것들을 함께 알린다 (비교가 끝나면 결과를 먼저 넣고 Running 을 끄므로,
+    /// Running 이 바뀔 때 목록 · 차이 없음도 다시 알려야 목록이 나온다)
+    private void ResultVisibilityChanged()
     {
         OnPropertyChanged(nameof(ShowEmpty));
         OnPropertyChanged(nameof(ShowError));
         OnPropertyChanged(nameof(ShowResult));
+        OnPropertyChanged(nameof(NoDifferences));
+        OnPropertyChanged(nameof(HasItems));
     }
 
     private void CompareStateChanged()
