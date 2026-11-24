@@ -143,19 +143,6 @@ public abstract partial class SqlDialect : ISqlDialect
         };
     }
 
-    // MARK: - 예상 행 수 (Mac 판 Tuning.swift)
-
-    /// 통계상 예상 행 수 (정확한 COUNT 가 아님 — 빠름)
-    public string RowEstimateSql(string table, string schema) => Kind switch
-    {
-        DatabaseKind.Postgres => $"""
-            SELECT c.reltuples::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = {QuoteString(schema)} AND c.relname = {QuoteString(table)}
-            """,
-        DatabaseKind.Mssql => $"SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = OBJECT_ID({QuoteString(QuoteTable(table))}) AND p.index_id IN (0, 1)",
-        _ => $"SELECT TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = {QuoteString(schema)} AND TABLE_NAME = {QuoteString(table)}",
-    };
-
     // MARK: - 결과 페이징
 
     [GeneratedRegex(@"\bLIMIT\s+\d|\bOFFSET\b|\bFETCH\s+(FIRST|NEXT)\b|\bTOP\s*\(?\s*\d|\bINTO\b|\bFOR\s+UPDATE\b|\bFOR\s+SHARE\b")]

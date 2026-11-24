@@ -13,8 +13,8 @@ public sealed partial class AppGuide
     public static readonly string About = $"""
         GodDB is a free, open-source (MIT license) native Windows database client written in C#/.NET (Avalonia UI), ported from the macOS app.
         Author: zio0911 (GitHub). Source and releases: {AppInfo.RepositoryUrl}
-        Supports MySQL 5.7/8.x, PostgreSQL 12+, SQL Server 2016+, Redis 6+. Local Ollama is used for AI (query tuning,
-        diagram/modeling AI and this assistant); nothing is sent to external servers and row data is never shared with AI.
+        Supports MySQL 5.7/8.x, PostgreSQL 12+, SQL Server 2016+, Redis 6+. Local Ollama is used for AI (diagram/modeling AI
+        and this assistant); nothing is sent to external servers and row data is never shared with AI.
         Main modes (top segment): 쿼리 (query editor), 스키마 비교 (schema compare), 모델링 (data modeling).
         """;
 

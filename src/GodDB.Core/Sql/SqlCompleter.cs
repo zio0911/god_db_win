@@ -54,11 +54,16 @@ public static partial class SqlCompleter
         "LIMIT", "SET", "VALUES", "UNION", "USING", "STRAIGHT_JOIN", "NATURAL", "FOR", "WINDOW", "AS",
     ];
 
-    [GeneratedRegex(@"\b(?:FROM|JOIN|UPDATE|INTO)\s+`?([A-Za-z0-9_$.]+)`?(?:\s+(?:AS\s+)?`?([A-Za-z0-9_$]+)`?)?", RegexOptions.IgnoreCase)]
+    // 이름은 `t` · "t" · [t] 로 감쌀 수 있고 db.schema.t 처럼 점으로 이어질 수 있다 (Mac 1.4.2)
+    private const string Ident = @"[`""\[]?[A-Za-z0-9_$]+[`""\]]?";
+    private const string NamePattern = "(" + Ident + @"(?:\." + Ident + ")*)";
+    private const string AliasPattern = @"(?:\s+(?:AS\s+)?[`""\[]?([A-Za-z0-9_$]+)[`""\]]?)?";
+
+    [GeneratedRegex(@"\b(?:FROM|JOIN|UPDATE|INTO)\s+" + NamePattern + AliasPattern, RegexOptions.IgnoreCase)]
     private static partial Regex TableRegex();
 
     /// 쉼표로 이어진 FROM a x, b y 도 처리
-    [GeneratedRegex(@",\s*`?([A-Za-z0-9_$.]+)`?(?:\s+(?:AS\s+)?`?([A-Za-z0-9_$]+)`?)?", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@",\s*" + NamePattern + AliasPattern, RegexOptions.IgnoreCase)]
     private static partial Regex CommaRegex();
 
     [GeneratedRegex(@"\b(FROM|JOIN|UPDATE|INTO|TABLE|DESC|DESCRIBE)\s+[A-Za-z0-9_$]*$", RegexOptions.IgnoreCase)]
@@ -76,6 +81,7 @@ public static partial class SqlCompleter
                 var table = m.Groups[1].Value;
                 var dot = table.LastIndexOf('.');
                 if (dot >= 0) table = table[(dot + 1)..];
+                table = table.Trim('`', '"', '[', ']');
                 map[table.ToLowerInvariant()] = table;
                 if (m.Groups[2].Success)
                 {
@@ -114,7 +120,12 @@ public static partial class SqlCompleter
             var q = qualifier.ToLowerInvariant();
             var tableName = aliasMap.TryGetValue(q, out var a) ? a : byName.TryGetValue(q, out var bt) ? bt.Name : null;
             if (tableName != null && byName.TryGetValue(tableName.ToLowerInvariant(), out var t))
+            {
                 foreach (var c in t.Columns.OrderBy(c => c.Position)) Add(c.Name);
+                // 잘못 쓴 이름(a.username)이라 맞는 게 없으면 그 테이블 컬럼을 비슷한 순서로
+                if (output.Count == 0 && p.Length > 0)
+                    return Closest(prefix, t.Columns.Select(c => c.Name).ToList()).Take(limit).ToList();
+            }
             return Limited();
         }
 
@@ -210,10 +221,41 @@ public static partial class SqlCompleter
             default:
                 // 공통 접두어가 더 길면 먼저 채우고, 그래도 여러 개면 목록을 띄운다.
                 var common = CommonPrefix(candidates);
-                return common.Length > ctx.Length
+                // 잘못 쓴 이름의 "비슷한 후보" 목록이면 공통 접두어로 바꾸지 않고 목록만 띄운다 (Mac 1.4.2)
+                var typed = text.Substring(ctx.Start, ctx.Length);
+                return common.Length > ctx.Length && common.StartsWith(typed, StringComparison.OrdinalIgnoreCase)
                     ? new TabAction.Replace(ctx.Start, ctx.Length, common)
                     : new TabAction.ShowList(ctx.Start, ctx.Length, candidates);
         }
+    }
+
+    /// 이름을 비슷한 순서로 (포함 관계 먼저, 그다음 편집 거리)
+    public static List<string> Closest(string word, IReadOnlyList<string> names)
+    {
+        var w = word.ToLowerInvariant();
+        int Score(string name)
+        {
+            var n = name.ToLowerInvariant();
+            if (n.Contains(w, StringComparison.Ordinal) || w.Contains(n, StringComparison.Ordinal)) return Math.Abs(n.Length - w.Length);
+            return 100 + EditDistance(w, n);
+        }
+        return names.Select((n, i) => (n, i, s: Score(n))).OrderBy(x => x.s).ThenBy(x => x.i).Select(x => x.n).ToList();
+    }
+
+    internal static int EditDistance(string a, string b)
+    {
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+        var prev = Enumerable.Range(0, b.Length + 1).ToArray();
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var cur = new int[b.Length + 1];
+            cur[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+                cur[j] = Math.Min(Math.Min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+            prev = cur;
+        }
+        return prev[b.Length];
     }
 
     /// 대소문자를 무시한 공통 접두어 (글자 모양은 첫 후보를 따른다)

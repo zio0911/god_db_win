@@ -48,8 +48,6 @@ public sealed partial class AppState : ObservableObject
     [ObservableProperty] private TableMeta? _alteringTable;
     /// CSV 가져오기 대상 테이블
     [ObservableProperty] private TableMeta? _importingTable;
-    /// 진행 중이거나 결과를 보고 있는 쿼리 튜닝
-    [ObservableProperty] private TuningJob? _tuningJob;
     [ObservableProperty] private TableActionRequest? _tableAction;
     [ObservableProperty] private EditApplyRequest? _editApply;
     /// 시작 화면 (준비 중 진행 막대)

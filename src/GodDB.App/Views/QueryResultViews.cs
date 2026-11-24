@@ -269,7 +269,7 @@ public sealed class PlanWarningsView : Border
         Child = _panel;
     }
 
-    public void Update(QueryResult result, string? tree, string? tuneDisabledReason, Action? onTune)
+    public void Update(QueryResult result, string? tree)
     {
         BorderBrush = this.TryFindResource("DividerBrush", ActualThemeVariant, out var d) ? d as IBrush : null;
         _panel.Children.Clear();
@@ -288,19 +288,9 @@ public sealed class PlanWarningsView : Border
             toggle.IsCheckedChanged += (_, _) =>
             {
                 _showTree = toggle.IsChecked == true;
-                Update(result, tree, tuneDisabledReason, onTune);
+                Update(result, tree);
             };
             right.Children.Add(toggle);
-        }
-        if (onTune != null)
-        {
-            var tune = Q.B(Glyphs.Sparkles + " " + Tr("AI 로 튜닝하기"), onTune,
-                tuneDisabledReason ?? Tr("이 쿼리와 실행 계획을 로컬 Ollama 에 보내 개선 SQL 과 추천 인덱스를 받아요 (Ctrl+Alt+T)"));
-            tune.Background = Q.Purple;
-            tune.Foreground = Brushes.White;
-            tune.IsEnabled = tuneDisabledReason == null;
-            if (tuneDisabledReason != null) ToolTip.SetShowOnDisabled(tune, true);
-            right.Children.Add(tune);
         }
         Grid.SetColumn(right, 2);
         head.Children.Add(right);
@@ -694,6 +684,8 @@ public sealed class ResultPane : UserControl
     public QuickFilterBar Filter { get; } = new();
     public ResultStatusBar Status { get; } = new();
     public PlanWarningsView Plan { get; } = new();
+    /// ID 로 찾기 결과 아래 "없는 ID" 줄 (Mac 1.4.0)
+    public IdSearchMissingBar IdMissing { get; } = new();
     // Mac .font(.system(.body, design: .monospaced)) = 13pt
     public SelectableTextBlock ErrorText { get; } = new() { Foreground = Q.Red, FontFamily = Q.Mono, FontSize = 13, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
     private readonly ScrollViewer _errorScroll;
@@ -769,8 +761,9 @@ public sealed class ResultPane : UserControl
         Avalonia.Controls.Grid.SetColumn(Detail, 2);
         _body.Children.Add(Detail);
 
-        // 줄: 0 결과 탭, 1 구분선, 2 오류, 3 실행 계획, 4 편집 막대, 5 구분선, 6 필터, 7 구분선, 8 본문(실행 중 · 메시지 · 표), 9 구분선, 10 아래 줄
-        _layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto") };
+        // 줄: 0 결과 탭, 1 구분선, 2 오류, 3 실행 계획, 4 편집 막대, 5 구분선, 6 필터, 7 구분선, 8 본문(실행 중 · 메시지 · 표),
+        //     9 없는 ID (ID 로 찾기), 10 구분선, 11 아래 줄
+        _layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto") };
         void Put(Control c, int row) { Avalonia.Controls.Grid.SetRow(c, row); _layout.Children.Add(c); }
         Put(TabsBar, 0);
         Put(_tabsDivider, 1);
@@ -783,8 +776,10 @@ public sealed class ResultPane : UserControl
         Put(_body, 8);
         Put(Running, 8);
         Put(_message, 8);
-        Put(_statusDivider, 9);
-        Put(Status, 10);
+        Put(IdMissing, 9);
+        Put(_statusDivider, 10);
+        Put(Status, 11);
+        IdMissing.SetClipboard = text => _app.Dialogs.SetClipboardTextAsync(text);
         Content = _layout;
     }
 
@@ -934,8 +929,7 @@ public sealed class ResultPane : UserControl
         }
         if (tab.IsPlan)
         {
-            Plan.Update(result, tab.PlanTree, _app.TuningUnavailableReason,
-                TuningSettings.Enabled ? () => { if (result.Sql is { } sql) _app.StartTuning(sql); } : null);
+            Plan.Update(result, tab.PlanTree);
             Vis(Plan);
         }
         if (result.Columns.Count == 0)
@@ -958,6 +952,11 @@ public sealed class ResultPane : UserControl
             Vis(Filter, _filterDivider);
             ShowGrid(tab, result, tab.Edits, Filter.Text, resultChanged, showDetail: true);
             Filter.SetCounts(Grid.Rows.Count, result.Rows.Count + tab.Edits.Inserts.Count);
+            if (tab.IdSearch is { } run && IdSearchMissingBar.Applies(run, result))
+            {
+                IdMissing.Update(run, result);
+                Vis(IdMissing);
+            }
         }
         Status.Update(result, Grid.SelectedIds.Count, tab.PageLoading || !tab.Edits.IsEmpty, tab.ExportProgress, tab.AppendCapped);
         Vis(Status, _statusDivider);

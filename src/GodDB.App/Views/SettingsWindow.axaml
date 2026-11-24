@@ -46,6 +46,16 @@
             </StackPanel>
           </Border>
 
+          <TextBlock Classes="groupTitle" Text="{l:T 편집기}"/>
+          <Border Classes="section">
+            <StackPanel Spacing="6">
+              <CheckBox x:Name="LintBox" Content="{l:T 쿼리 오류에 빨간 밑줄}" IsChecked="{Binding LintEnabled}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '없는 컬럼, 빠진 콤마, 닫히지 않은 괄호 · 따옴표, 키워드 오타를 입력하는 동안 표시해요. 밑줄에 마우스를 올리면 이유가 나와요.'}"/>
+              <CheckBox x:Name="LintServerBox" Content="{l:T DB 에 검사 요청}" IsChecked="{Binding LintServer}" IsEnabled="{Binding LintEnabled}"/>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T '입력을 1초 멈추면 커서가 있는 구문을 DB 에 실행 없이 검사만 맡겨요 (MySQL · PostgreSQL PREPARE, SQL Server sp_describe_first_result_set). 실행 중이거나 PostgreSQL 트랜잭션이 열려 있으면 묻지 않아요.'}"/>
+            </StackPanel>
+          </Border>
+
           <TextBlock Classes="groupTitle" Text="{l:T 안전}"/>
           <Border Classes="section">
             <StackPanel Spacing="6">
@@ -117,8 +127,6 @@
             <StackPanel Spacing="6">
               <CheckBox Content="{l:T AI 어시스턴트 사용}" IsChecked="{Binding AssistantEnabled}"/>
               <TextBlock Classes="caption" Text="{l:T '끄면 도구 막대의 ✨ AI 어시스턴트 버튼과 오른쪽 패널이 사라져요.'}"/>
-              <CheckBox Content="{l:T 쿼리 튜닝 사용}" IsChecked="{Binding TuningEnabled}"/>
-              <TextBlock Classes="caption" Text="{l:T '쿼리 탭의 튜닝 버튼(Ctrl+Alt+T)을 누르면 쿼리·테이블 구조·인덱스·실행 계획을 로컬 Ollama 에 보내 개선 SQL 과 추천 인덱스를 받아요. 끄면 튜닝 버튼이 사라져요.'}"/>
             </StackPanel>
           </Border>
           <TextBlock Classes="groupTitle" Text="Ollama"/>

@@ -338,10 +338,10 @@ public class QueryWorkspaceViewTests
         app.SelectTab(b);
         Pump();
         Assert.Equal("SELECT 2 -- b", editor.SqlText);
-        // 밖에서 탭 글을 바꾸면 (튜닝 결과 넣기 등) 편집기에 반영
-        app.InsertIntoTab(b, "SELECT 3", "튜닝");
+        // 밖에서 탭 글을 바꾸면 (AI 가 만든 SQL 넣기 등) 편집기에 반영
+        app.InsertIntoTab(b, "SELECT 3", "AI");
         Pump();
-        Assert.Contains("-- 튜닝\nSELECT 3;", editor.SqlText);
+        Assert.Contains("-- AI\nSELECT 3;", editor.SqlText);
         w.Close();
     });
 

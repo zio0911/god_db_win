@@ -102,7 +102,9 @@ public sealed class QuickOpenWindow : Window
 
     /// 찾을 대상 (지금 DB 의 테이블·컬럼·루틴, 다른 DB, 다른 스키마 객체)
     public List<QuickOpen.Item> Items =>
-        QuickOpen.BuildItems(_app.CurrentDatabase, _app.Tables, _app.Routines, _app.Databases, _others);
+        [.. QuickOpen.BuildItems(_app.CurrentDatabase, _app.Tables, _app.Routines, _app.Databases, _others),
+         // 저장 쿼리 (Mac 1.4.0): schema = 폴더, detail = 저장 쿼리 id
+         .. _app.SavedQueries.Search("", _app.SelectedProfileId).Select(q => new QuickOpen.Item(QuickOpen.Kind.SavedQuery, q.Folder, q.Name, q.Id.ToString()))];
 
     /// 지금 목록에 보이는 결과
     public IReadOnlyList<QuickOpen.Item> Results => _results;
@@ -161,6 +163,7 @@ public sealed class QuickOpenWindow : Window
         var name = new TextBlock { Text = item.Name, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock? detail = null;
         if (item.Kind == QuickOpen.Kind.Column) detail = new TextBlock { Text = item.Detail, Classes = { "secondary" } };
+        else if (item.Kind == QuickOpen.Kind.SavedQuery) detail = new TextBlock { Text = Tr("저장 쿼리"), Classes = { "caption" }, Opacity = 0.7 };
         else if (item.Detail.Length > 0) detail = new TextBlock { Text = item.Detail, Classes = { "caption" }, Opacity = 0.7 };
         Grid.SetColumn(name, 1);
         g.Children.Add(icon);
@@ -175,7 +178,7 @@ public sealed class QuickOpenWindow : Window
         if (item.Kind != QuickOpen.Kind.Database)
         {
             var schema = new TextBlock { Text = item.Schema, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-            if (item.Schema == _app.CurrentDatabase) schema.Classes.Add("secondary");
+            if (item.Schema == _app.CurrentDatabase || item.Kind == QuickOpen.Kind.SavedQuery) schema.Classes.Add("secondary");
             Grid.SetColumn(schema, 3);
             g.Children.Add(schema);
         }
@@ -190,6 +193,7 @@ public sealed class QuickOpenWindow : Window
         QuickOpen.Kind.Function => "ƒ",
         QuickOpen.Kind.Trigger => "⚡",
         QuickOpen.Kind.Column => "≡",
+        QuickOpen.Kind.SavedQuery => "🔖",
         _ => "🛢",
     };
 
@@ -199,6 +203,7 @@ public sealed class QuickOpenWindow : Window
         QuickOpen.Kind.View => "#30B0C7",
         QuickOpen.Kind.Procedure or QuickOpen.Kind.Function or QuickOpen.Kind.Trigger => "#AF52DE",
         QuickOpen.Kind.Column => "#8A8A8E",
+        QuickOpen.Kind.SavedQuery => "#FF2D55",
         _ => "#FF9500",
     };
 

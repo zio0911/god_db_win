@@ -16,6 +16,14 @@ public static class Ui
     }
 
     public static TextBlock Headline(string text) => Text(text, "headline");
+
+    /// 코드 배경(CodeBackground) 상자 (예전 TuningSheet.CodeBorder — 쿼리 튜닝을 빼면서 옮김)
+    public static Border CodeBorder(Control child)
+    {
+        var b = new Border { Padding = new Thickness(8), CornerRadius = new CornerRadius(6), Child = child };
+        b.Bind(Border.BackgroundProperty, b.GetResourceObservable("CodeBackground"));
+        return b;
+    }
     public static TextBlock Caption(string text) => Text(text, "caption");
 
     public static Button Button(string text, Action onClick, bool isDefault = false, bool isCancel = false, bool accent = false)

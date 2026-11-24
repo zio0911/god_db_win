@@ -27,7 +27,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _confirmDangerous = RunConfirm.ConfirmDangerous;
         _logFileEnabled = LogFile.Enabled;
         _retentionIndex = Math.Max(0, LogFile.RetentionChoices.ToList().IndexOf(LogFile.RetentionDays));
-        _tuningEnabled = TuningSettings.Enabled;
         _ollamaUrl = TuningSettings.Url;
         _tuningModel = TuningSettings.Model;
         _assistantEnabled = TuningSettings.AssistantEnabled;
@@ -61,6 +60,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (value >= 0 && value < TimeoutValues.Length) Prefs.Set(AppState.QueryTimeoutKey, TimeoutValues[value]);
     }
+
+    /// 편집기 > 쿼리 오류에 빨간 밑줄 · DB 에 검사 요청 (기본 켬, Mac 1.4.2). 다음 입력부터 적용된다 (Mac 과 같음).
+    [ObservableProperty] private bool _lintEnabled = EditorLint.Enabled;
+    partial void OnLintEnabledChanged(bool value) => EditorLint.Enabled = value;
+    [ObservableProperty] private bool _lintServer = EditorLint.ServerEnabled;
+    partial void OnLintServerChanged(bool value) => EditorLint.ServerEnabled = value;
 
     /// 안전 > 위험한 명령 실행 전 확인 (기본 켬). 켜고 끈 기록은 상태창 · 로그 파일 · 감사 로그(설정)에 남긴다. (Mac #103)
     [ObservableProperty] private bool _confirmDangerous;
@@ -198,8 +203,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         App?.NotifyAssistantEnabled();
     }
 
-    [ObservableProperty] private bool _tuningEnabled;
-    partial void OnTuningEnabledChanged(bool value) => TuningSettings.Enabled = value;
 
     [ObservableProperty] private string _ollamaUrl;
     partial void OnOllamaUrlChanged(string value)

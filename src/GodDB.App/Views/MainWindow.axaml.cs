@@ -463,6 +463,10 @@ public partial class MainWindow : Window
             Item("모든 접속 끊기", () => app.Fire(app.DisconnectAllAsync)),
             new Separator(),
             Item("객체 빠른 찾기…", () => app.ShowQuickOpen = true, "Ctrl+O", () => app.CanQuickOpen),
+            // Mac 1.4.0: ⌥⌘F · ⌥⌘S · ⇧⌘K
+            Item("ID 로 찾기…", () => app.OpenIdSearch(), "Ctrl+Alt+F", () => app.CanSearchIds),
+            Item("쿼리 저장…", app.OpenSaveQuery, "Ctrl+Alt+S", () => app.CanSaveQuery),
+            Item("저장 쿼리…", app.OpenSavedQueries, "Ctrl+Shift+K", () => app.CanOpenSavedQueries),
             Item("쿼리 히스토리…", () => app.ShowHistory = true, "Ctrl+Y"));
 
         var view = Top("보기",

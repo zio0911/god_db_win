@@ -81,8 +81,6 @@ public interface ISqlDialect
     string DropTableSql(string table);
     /// [테이블, 외래키 이름, 컬럼, 참조 테이블, 참조 컬럼, 순서] — 같은 DB/스키마 안의 참조만
     string ForeignKeysSql(string schema);
-    /// 통계상 예상 행 수 (정확한 COUNT 가 아님 — 빠름)
-    string RowEstimateSql(string table, string schema);
 
     // ── 결과 페이징 · 건수 · 정렬 ──
     /// SELECT 를 페이지 단위로 가져오는 SQL. 다음 페이지가 있는지 알기 위해 limit + 1 행을 요청한다.
