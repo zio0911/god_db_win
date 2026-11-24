@@ -39,6 +39,7 @@ public partial class SidebarView : UserControl
         vm.App.ConnectionChanged += _ => BindRedis();
         ToolTip.SetTip(DiagramButton, vm.DiagramButtonTip);
         BindRedis();
+        AttachTableDescriptions(vm.App);
     }
 
     /// Redis 사이드바 영역(키 트리 · 검색)은 Redis 화면 포팅의 뷰가 RedisWorkspace 를 DataContext 로 받는다

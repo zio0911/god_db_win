@@ -237,18 +237,54 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
 
+    /// 입력 중인 주소. 이 PC(localhost) 주소일 때만 저장한다 (다른 서버로 구조 · SQL · 샘플 값이 나가지 않게, Mac 1.4.0)
     [ObservableProperty] private string _ollamaUrl;
     partial void OnOllamaUrlChanged(string value)
     {
-        TuningSettings.Url = value;
+        if (AISettings.IsLocalUrl(value)) AISettings.Url = value;
         OnPropertyChanged(nameof(IsNonLocal));
     }
 
-    public bool IsNonLocal => !TuningSettings.IsLocal;
+    public bool IsNonLocal => !AISettings.IsLocalUrl(OllamaUrl) || !AISettings.IsLocal;
     public string NonLocalWarning => TuningSettings.NonLocalWarning;
 
+    /// [기본값(localhost)으로]
+    [RelayCommand]
+    private async Task ResetOllamaUrlAsync()
+    {
+        OllamaUrl = AISettings.DefaultUrl;
+        AISettings.Url = AISettings.DefaultUrl;
+        await RefreshAsync();
+    }
+
     [ObservableProperty] private string _tuningModel;
-    partial void OnTuningModelChanged(string value) => TuningSettings.Model = value ?? "";
+    partial void OnTuningModelChanged(string value)
+    {
+        AISettings.Model = value ?? "";
+        Probe = null;
+    }
+
+    /// [모델 확인] 결과 (null = 아직 안 함)
+    [ObservableProperty] private ModelHealth? _probe;
+    [ObservableProperty] private bool _probing;
+    partial void OnProbeChanged(ModelHealth? value) { OnPropertyChanged(nameof(ProbeText)); OnPropertyChanged(nameof(ProbeOk)); OnPropertyChanged(nameof(ProbeFailed)); }
+    public string ProbeText => Probe == null ? "" : Probe.IsOK ? "✅ OK" : "⛔ " + Probe.Reason;
+    public bool ProbeOk => Probe?.IsOK == true;
+    public bool ProbeFailed => Probe is { IsOK: false };
+
+    /// 고른 모델(자동이면 쓸 모델)에 아주 짧은 요청을 보내 답하는지 확인 (AI 데이터 찾기와 같은 확인, 기억한 결과는 새로)
+    [RelayCommand]
+    private async Task CheckModelAsync()
+    {
+        var models = (Status?.RunningModels ?? []).Select(m => m.Name).ToList();
+        if (AISettings.EffectiveModel(models) is not { } model) return;
+        Probing = true;
+        Probe = await ModelProbe.CheckAsync(model, AISettings.Client, useCache: false);
+        Probing = false;
+    }
+
+    public bool CanCheckModel => !Probing && (Status?.RunningModels.Count ?? 0) > 0;
+    partial void OnProbingChanged(bool value) => OnPropertyChanged(nameof(CanCheckModel));
 
     [ObservableProperty] private OllamaStatus? _status;
     [ObservableProperty] private bool _checking;
@@ -260,6 +296,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanStartOllama));
         OnPropertyChanged(nameof(ShowDownload));
         OnPropertyChanged(nameof(ModelChoices));
+        OnPropertyChanged(nameof(CanCheckModel));
     }
 
     public string StatusText => Status switch
@@ -278,7 +315,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         get
         {
-            var list = new List<Choice<string>> { new("", Tr("자동 (첫 번째 모델)")) };
+            var list = new List<Choice<string>> { new("", Tr("자동 (추천 모델 먼저)")) };
             var models = Status?.RunningModels ?? [];
             list.AddRange(models.Select(m => new Choice<string>(m.Name, $"{m.Name}  ·  {m.ParameterSize}  ·  {m.SizeGB:0.0}GB")));
             if (TuningModel.Length > 0 && models.All(m => m.Name != TuningModel)) list.Add(new(TuningModel, TuningModel));
@@ -292,14 +329,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         set { if (value != null) TuningModel = value.Value; }
     }
 
-    public string RecommendNote => Tr("추천: %@ (코드·SQL 에 강하고 한국어도 잘 알아들어요). 메모리가 넉넉하면 큰 모델일수록 정확해요.",
-                                      string.Join(", ", TuningSettings.RecommendedModels));
-    public const string PullCommand = "ollama pull qwen2.5-coder:14b";
+    /// Mac: "M5 Pro 메모리 48GB 이상이면 qwen3.8:27b-mlx, 24GB 면 qwen3:14b". Windows 는 Apple 칩 이름 대신 메모리(그래픽 메모리 포함)로
+    /// 안내하고, MLX 대신 일반 Ollama 태그를 쓴다 (AISettings.RecommendedModels 참고).
+    public string RecommendNote => Tr("추천: 메모리 48GB 이상이면 %@, 24GB 면 %@ 를 추천해요. 모델을 \"자동\"으로 두면 설치된 추천 모델을 먼저 써요.",
+                                      AISettings.DefaultRecommendedModel, AISettings.SmallMemoryModel);
+    public static string PullCommand => "ollama pull " + AISettings.DefaultRecommendedModel;
+    public static string PullSmallCommand => "ollama pull " + AISettings.SmallMemoryModel;
     public string PullCommandText => PullCommand;
+    public string PullSmallCommandText => PullSmallCommand;
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        // AI 어시스턴트의 [‹모델› 로 바꾸기] 로 바뀐 모델을 반영
+        if (TuningModel != AISettings.Model) TuningModel = AISettings.Model;
         Checking = true;
         try { Status = await Task.Run(() => TuningSettings.Client.StatusAsync()); }
         catch { Status = new OllamaStatus.NotInstalled(); }
@@ -327,6 +370,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private Task CopyPullAsync() => _dialogs.SetClipboardTextAsync(PullCommand);
+
+    [RelayCommand]
+    private Task CopyPullSmallAsync() => _dialogs.SetClipboardTextAsync(PullSmallCommand);
 
     // MARK: - 업데이트
 

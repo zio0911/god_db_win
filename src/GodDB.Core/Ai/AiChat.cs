@@ -49,13 +49,16 @@ public sealed class AiChat
     public List<DiagramConversation> History { get; private set; }
 
     /// 쓸 Ollama (기본: 설정의 주소). 테스트에서 바꾼다.
-    public Func<OllamaClient> ClientFactory { get; set; } = () => TuningSettings.Client;
-    /// 쓸 모델 (빈 문자열이면 설치된 첫 모델). 기본: 설정
-    public Func<string> ModelSetting { get; set; } = () => TuningSettings.Model;
+    public Func<OllamaClient> ClientFactory { get; set; } = () => AISettings.Client;
+    /// 쓸 모델 (빈 문자열이면 설치된 추천 모델 → 첫 모델). 기본: 설정
+    public Func<string> ModelSetting { get; set; } = () => AISettings.Model;
 
     public event Action? Changed;
 
     private CancellationTokenSource? _cts;
+
+    /// 지금 작업 번호: 멈춘 작업이 늦게 끝나면서 새 작업 상태를 건드리지 않게 (Mac 1.4.3 #177)
+    public int Generation { get; private set; }
 
     public AiChat(string scope, DiagramChatStore? store = null)
     {
@@ -74,6 +77,46 @@ public sealed class AiChat
         _cts = null;
         Running = false;
         Notify();
+    }
+
+    /// 새 작업 시작: 답하는 중이면 그 답은 멈춘다 (#177 — 답하는 중에 보낸 글이 사라지지 않게).
+    /// 작업 번호와 이 작업의 취소 토큰을 돌려준다.
+    public (int Generation, CancellationToken Token) Begin()
+    {
+        if (Running) Cancel();
+        Generation++;
+        Running = true;
+        ThinkingChars = 0;
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        return (Generation, cts.Token);
+    }
+
+    /// 답 말풍선 고치기 (id 로 찾는다 — 그 사이 새 대화로 바꿨으면 아무것도 하지 않는다)
+    public void Edit(Guid id, Action<Message> change)
+    {
+        if (Messages.FirstOrDefault(m => m.Id == id) is not { } m) return;
+        change(m);
+        Notify();
+    }
+
+    /// 작업 끝: 그 사이 새 작업이 시작됐으면 상태는 새 작업 것이라 그대로 둔다
+    public void Finish(int generation)
+    {
+        if (generation != Generation) return;
+        Running = false;
+        _cts = null;
+        Persist();
+        Notify();
+    }
+
+    /// 메시지 더하기 (데이터 찾기처럼 AskAsync 밖에서 대화를 만들 때)
+    public Message Add(string role, string text)
+    {
+        var m = new Message(role, text);
+        Messages.Add(m);
+        Notify();
+        return m;
     }
 
     private void Show(DiagramConversation c)
@@ -169,16 +212,14 @@ public sealed class AiChat
     {
         hooks ??= new Hooks();
         var q = question.Trim();
-        if (q.Length == 0 || Running) return;
+        if (q.Length == 0) return;
+        // 답하는 중이면 그 답은 멈추고 이 질문을 먼저 (#177)
+        var (gen, ct) = Begin();
         Messages.Add(new Message("user", q));
         var answer = new Message("assistant", "");
         Messages.Add(answer);
-        Running = true;
-        ThinkingChars = 0;
+        var answerId = answer.Id;
         var history = Messages.Take(Messages.Count - 1).Where(m => !m.Failed).Select(m => (m.Role, Content: m.Text)).ToList();
-        var cts = new CancellationTokenSource();
-        _cts = cts;
-        var ct = cts.Token;
         Notify();
 
         var client = ClientFactory();
@@ -196,7 +237,7 @@ public sealed class AiChat
                 ct.ThrowIfCancellationRequested();
                 switch (chunk)
                 {
-                    case ChatChunk.Thinking t: ThinkingChars += t.Text.Length; break;
+                    case ChatChunk.Thinking t: if (gen == Generation) ThinkingChars += t.Text.Length; break;
                     case ChatChunk.Content c:
                         raw += c.Text;
                         answer.Text = DiagramAI.Clean(raw);
@@ -204,23 +245,22 @@ public sealed class AiChat
                 }
                 Notify();
             }
-            if (answer.Text.Length == 0) answer.Text = Tr("(답변 없음)");
+            // 멈추면 스트림이 오류 없이 끝날 수 있다 → 답이 끝난 것으로 보지 않게
+            ct.ThrowIfCancellationRequested();
+            Edit(answerId, m => { if (m.Text.Length == 0) m.Text = Tr("(답변 없음)"); });
             hooks.Answered?.Invoke(FeatureName(failureContext), (int)started.Elapsed.TotalSeconds, model);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
         {
-            answer.Text += (answer.Text.Length == 0 ? "" : "\n\n") + Tr("(취소했어요)");
+            // 취소로 끊긴 연결 오류도 실패가 아니라 취소로
+            Edit(answerId, m => m.Text += (m.Text.Length == 0 ? "" : "\n\n") + Tr("(취소했어요)"));
         }
         catch (Exception e)
         {
-            answer.Failed = true;
-            answer.Text = hooks.Failed?.Invoke(e, failureContext, FeatureName(failureContext)) ?? e.Message;
+            var text = hooks.Failed?.Invoke(e, failureContext, FeatureName(failureContext)) ?? e.Message;
+            Edit(answerId, m => { m.Failed = true; m.Text = text; });
         }
-        if (ReferenceEquals(_cts, cts)) _cts = null;
-        cts.Dispose();
-        Running = false;
-        Persist();
-        Notify();
+        Finish(gen);
     }
 
     /// 진행 표시 (생각 중 / 답변 쓰는 중)
