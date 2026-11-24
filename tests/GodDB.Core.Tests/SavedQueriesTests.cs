@@ -1,3 +1,4 @@
+using GodDB.Core.Platform;
 using System.Text;
 using System.Text.Json;
 using GodDB.Core.Dialects;
@@ -205,7 +206,8 @@ public class SavedQueriesTests
         var dir = Path.Combine(Path.GetTempPath(), "goddb-saved-" + Guid.NewGuid());
         try
         {
-            var store = new SavedQueryStore(Path.Combine(dir, "saved-queries.json"));
+            var crypto = new LocalDataCrypto(new StaticLocalDataKeyProvider());
+            var store = new SavedQueryStore(Path.Combine(dir, "saved-queries.json"), crypto);
             Assert.Equal(new SavedQueryLibrary(), store.Load());
 
             var profile = Guid.NewGuid();
@@ -216,9 +218,11 @@ public class SavedQueriesTests
             store.Save(new SavedQueryLibrary([a, b]));
             Assert.Equal(new SavedQueryLibrary([a, b]), store.Load());
 
-            // Mac 은 디스크에 GDBENC1 로 암호화해 둔다 (풀면 같은 JSON). Windows 의 로컬 데이터 암호화는
-            // SavedQueryStore 의 읽기/쓰기 지점에 따로 붙인다 — 여기서는 JSON 형식만 확인한다.
-            using var json = JsonDocument.Parse(File.ReadAllBytes(store.File));
+            // 디스크엔 GDBENC1 로 암호화돼 있고 (SQL 평문 없음), 풀면 Mac 과 같은 JSON
+            var raw = File.ReadAllText(store.File);
+            Assert.StartsWith("GDBENC1", raw);
+            Assert.DoesNotContain("member", raw);
+            using var json = JsonDocument.Parse(crypto.ReadDocumentData(store.File)!);
             Assert.Equal(1, json.RootElement.GetProperty("version").GetInt32());
             var queries = json.RootElement.GetProperty("queries");
             var q0 = queries[0];

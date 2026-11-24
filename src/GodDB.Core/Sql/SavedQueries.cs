@@ -310,11 +310,12 @@ public sealed class SavedQueryLibrary
     }
 }
 
-/// saved-queries.json 읽기 · 쓰기. 디스크를 읽고 쓰는 곳은 ReadBytes / WriteBytes 두 곳뿐이다
-/// (Mac 은 GDBENC1 통째 암호화 — Windows 의 로컬 데이터 암호화는 이 두 곳에 붙인다).
+/// saved-queries.json 읽기 · 쓰기. Mac 과 같이 GDBENC1 로 통째 암호화한다 (LocalDataCrypto, 키 없으면 쓰지 않음).
 /// JSON 은 Mac 과 같다: 키 정렬, 날짜 ISO 8601(초), UUID 대문자, 없는 값은 null.
-public sealed class SavedQueryStore(string file)
+public sealed class SavedQueryStore(string file, LocalDataCrypto? crypto = null)
 {
+    private LocalDataCrypto Crypto => crypto ?? LocalDataCrypto.Shared;
+
     private static readonly Lazy<SavedQueryStore> SharedLazy = new(() => new SavedQueryStore(Path.Combine(AppPaths.DataDirectory, "saved-queries.json")));
     public static SavedQueryStore Shared => SharedLazy.Value;
 
@@ -332,15 +333,9 @@ public sealed class SavedQueryStore(string file)
         catch (Exception e) { System.Diagnostics.Trace.WriteLine($"GodDB: saved queries not saved ({e.Message})"); }
     }
 
-    private byte[]? ReadBytes() => System.IO.File.Exists(File) ? System.IO.File.ReadAllBytes(File) : null;
+    private byte[]? ReadBytes() => Crypto.ReadDocumentData(File);
 
-    private void WriteBytes(byte[] data)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(File)!);
-        var tmp = File + ".tmp";
-        System.IO.File.WriteAllBytes(tmp, data);
-        System.IO.File.Move(tmp, File, overwrite: true);
-    }
+    private void WriteBytes(byte[] data) => Crypto.WriteDocument(data, File);
 
     // MARK: JSON (Mac SavedQueryStore.encode / decode)
 
