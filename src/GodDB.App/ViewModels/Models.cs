@@ -61,7 +61,18 @@ public sealed class ConnectionInfo
     public DbSession? Session { get; set; }
     public List<string> Databases { get; set; } = [];
     public string CurrentDatabase { get; set; } = "";
-    public List<TableMeta> Tables { get; set; } = [];
+    public List<TableMeta> Tables
+    {
+        get => _tables;
+        set
+        {
+            _tables = value;
+            InferredRelations = FKFollow.InferredRelations(value);
+        }
+    }
+    private List<TableMeta> _tables = [];
+    /// 외래 키 따라가기에 쓰는 추정 관계 (스키마를 읽을 때 한 번 계산)
+    public List<ForeignKeyMeta> InferredRelations { get; private set; } = [];
     public List<RoutineMeta> Routines { get; set; } = [];
     public bool SchemaLoading { get; set; }
     /// 자동 커밋 / 열린 트랜잭션 상태 (세션에서 읽어 둔 값)
@@ -124,6 +135,8 @@ public sealed record DiscardEditsPrompt(int Count, Action Action)
 /// 결과 편집 적용 확인 창 요청
 public sealed record EditApplyRequest(Guid TabId, IReadOnlyList<string> Statements)
 {
+    /// JSON 칸인데 JSON 이 깨진 컬럼 (경고만, 저장은 가능)
+    public IReadOnlyList<string> InvalidJsonColumns { get; init; } = [];
     public Guid Id { get; } = Guid.NewGuid();
 }
 

@@ -109,7 +109,7 @@ public sealed class RowList : IList<GridRow>, IList, INotifyCollectionChanged, I
 
 /// 결과 표 (Mac ResultGrid). 가상화된 DataGrid 에 결과 컬럼을 만들고,
 /// 헤더 클릭 정렬은 AppState 에 맡기며(쿼리를 다시 실행), 편집 상태에 따라 셀 모양을 바꾼다.
-public sealed class ResultGrid : UserControl
+public sealed partial class ResultGrid : UserControl
 {
     public DataGrid Grid { get; }
     public RowList Rows { get; } = new();
@@ -170,6 +170,7 @@ public sealed class ResultGrid : UserControl
         Grid.SelectionChanged += (_, _) => OnGridSelectionChanged();
         Grid.AddHandler(KeyDownEvent, OnGridKeyDown, RoutingStrategies.Tunnel);
         Grid.AddHandler(PointerPressedEvent, OnGridPointerPressed, RoutingStrategies.Tunnel);
+        Grid.DoubleTapped += OnGridDoubleTapped;
         Grid.ContextMenu = new ContextMenu();
         Grid.ContextMenu.Opening += (_, _) => FillContextMenu(Grid.ContextMenu);
         Content = Grid;
@@ -181,6 +182,7 @@ public sealed class ResultGrid : UserControl
     public void Show(QueryResult result, PendingEdits edits, string filter)
     {
         var newResult = !ReferenceEquals(result, Result);
+        if (newResult) EditingCell = null;
         Result = result;
         Edits = edits;
         _filter = filter;
@@ -275,7 +277,8 @@ public sealed class ResultGrid : UserControl
             var index = c.Id;
             Grid.Columns.Add(new DataGridTemplateColumn
             {
-                Header = new HeaderLabel(c.Name),
+                Header = new HeaderLabel(c.Name) { InferredOnly = Fk?.InferredOnly(index) },
+                HeaderTemplate = HeaderTemplate,
                 Tag = c,
                 CellTemplate = new FuncDataTemplate<GridRow>((_, _) => new ResultCell(this, index), supportsRecycling: true),
                 CanUserSort = true,
@@ -286,11 +289,6 @@ public sealed class ResultGrid : UserControl
         }
     }
 
-    /// 컬럼 머리글 글자. 같은 이름 컬럼이 있어도 머리글 칸 → 컬럼을 찾을 수 있게 컬럼마다 다른 객체로 둔다.
-    private sealed class HeaderLabel(string name)
-    {
-        public override string ToString() => name;
-    }
 
     /// 컬럼의 정렬 방향 (결과의 실제 정렬 ActiveSort 기준, 같은 이름이면 첫 컬럼 — Mac syncSortOrder).
     /// 머리글에는 이름만 쓰고, 방향은 표의 기본 정렬 화살표(머리글 :sortascending / :sortdescending)로 보인다 (Mac Table 의 기본 화살표).
@@ -384,7 +382,7 @@ public sealed class ResultGrid : UserControl
         if (ids.SequenceEqual(SelectedIds)) return;
         SelectedIds = ids;
         // 행을 고르면 표로 키보드 포커스를 옮긴다 (Ctrl+C 가 편집기가 아니라 표에 가도록 — Mac gridFocused)
-        if (ids.Count > 0 && !Grid.IsKeyboardFocusWithin) Grid.Focus();
+        if (ids.Count > 0 && _editingCell == null && !Grid.IsKeyboardFocusWithin) Grid.Focus();
         SelectedIdsChanged?.Invoke();
     }
 
@@ -409,8 +407,18 @@ public sealed class ResultGrid : UserControl
 
     private void OnGridPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        var props = e.GetCurrentPoint(Grid).Properties;
+        // Ctrl+클릭: 외래 키 칸이면 참조 따라가기 (Mac ⌘ 클릭 — 다른 칸의 Ctrl+클릭 여러 행 선택은 그대로)
+        if (props.IsLeftButtonPressed && e.KeyModifiers == KeyModifiers.Control && CellAt(e.Source) is { Row: { } fr } fc
+            && Fk is { } fk && fk.ByColumn.ContainsKey(fc.Column))
+        {
+            fk.Follow(fc.Column, fr.Values);
+            e.Handled = true;
+            return;
+        }
         // 우클릭한 행이 선택에 없으면 그 행을 고른다 (Mac contextMenu(forSelectionType:))
-        if (!e.GetCurrentPoint(Grid).Properties.IsRightButtonPressed) return;
+        if (!props.IsRightButtonPressed) return;
+        _pointerCell = CellAt(e.Source) is { Row: { } pr } pc ? (pr.Id, pc.Column) : null;
         var row = (e.Source as Visual)?.FindAncestorOfType<DataGridRow>(includeSelf: true);
         if (row?.DataContext is GridRow g && !Grid.SelectedItems.Contains(g))
         {
@@ -421,6 +429,8 @@ public sealed class ResultGrid : UserControl
 
     private void OnGridKeyDown(object? sender, KeyEventArgs e)
     {
+        // 칸 입력란 안의 키는 입력란이 처리한다
+        if (e.Source is TextBox) return;
         // Ctrl+C: 고른 행을 TSV(머리글 포함)로 — 엑셀 · 스프레드시트에 바로 붙여 넣을 수 있다
         if (e.Key == Key.C && e.KeyModifiers == KeyModifiers.Control)
         {
@@ -465,9 +475,42 @@ public sealed class ResultGrid : UserControl
             m.Click += (_, _) => action();
             return m;
         }
+        // 외래 키 따라가기: 참조 따라가기 → … · 이 행을 참조하는 행 ▸ (행 하나일 때)
+        if (Fk is { } fk && ids.Count == 1 && _byId.TryGetValue(ids[0], out var fkRow) && fk.HasMenu(fkRow.Values))
+        {
+            var values = fkRow.Values;
+            foreach (var o in fk.Outgoing)
+            {
+                var rel = o;
+                menu.Items.Add(Item(FKContext.FollowLabel(rel), () => fk.Follow(rel, values), fk.FollowSql(rel, values) != null));
+            }
+            if (fk.Incoming.Count > 0 && fk.PrimaryKeyValue(values) != null)
+            {
+                var sub = new MenuItem { Header = Tr("이 행을 참조하는 행") };
+                foreach (var o in fk.Incoming)
+                {
+                    var rel = o;
+                    sub.Items.Add(Item(FKContext.ReferencingLabel(rel), () => fk.OpenReferencing(rel, values)));
+                }
+                menu.Items.Add(sub);
+            }
+            menu.Items.Add(new Separator());
+        }
         if (Editable)
         {
             menu.Items.Add(Item(Tr("이 행 편집"), () => Select(ids), ids.Count == 1));
+            // 우클릭한 칸을 NULL 로 (고른 행이 여러 개면 모두, 삭제 표시한 행은 빼고)
+            if (_pointerCell is { } pc && ids.Contains(pc.Row) && EditableColumns.Contains(pc.Column)
+                && Result is { } res && pc.Column >= 0 && pc.Column < res.Columns.Count)
+            {
+                var targets = ids.Where(id => !Edits.Deletes.Contains(id)).ToList();
+                var col = pc.Column;
+                menu.Items.Add(Item(Tr("NULL 로 설정 (%@)", res.Columns[col].Name), () =>
+                {
+                    EndActiveEditing();
+                    foreach (var id in targets) OnSetCell?.Invoke(id, col, null);
+                }, targets.Count > 0));
+            }
             menu.Items.Add(Item(Tr("행 추가"), () => OnAddRow?.Invoke()));
             var existing = ids.Where(i => i < PendingEdits.NewRowBase).ToList();
             var allDeleted = ids.Count > 0 && existing.All(Edits.Deletes.Contains);
@@ -506,45 +549,4 @@ public sealed class ResultGrid : UserControl
         _ => null,
     };
 
-    /// 한 칸 (한 줄 미리보기). 행이 바뀌거나(재활용) 값 · 편집 상태가 바뀌면 다시 그린다.
-    private sealed class ResultCell : TextBlock
-    {
-        private readonly ResultGrid _grid;
-        private readonly int _column;
-        private GridRow? _row;
-
-        public ResultCell(ResultGrid grid, int column)
-        {
-            _grid = grid;
-            _column = column;
-            FontFamily = Mono;
-            FontSize = 12;
-            TextTrimming = TextTrimming.CharacterEllipsis;
-            TextWrapping = TextWrapping.NoWrap;
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
-        }
-
-        protected override void OnDataContextChanged(EventArgs e)
-        {
-            base.OnDataContextChanged(e);
-            if (_row != null) _row.PropertyChanged -= OnRowChanged;
-            _row = DataContext as GridRow;
-            if (_row != null) _row.PropertyChanged += OnRowChanged;
-            Refresh();
-        }
-
-        private void OnRowChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
-
-        private void Refresh()
-        {
-            if (_row == null) { Text = ""; return; }
-            var value = _column < _row.Values.Count ? _row.Values[_column] : null;
-            var look = QueryUi.Cell(_grid.Edits.State(_row.Id, _column), value);
-            Text = look.Text;
-            FontWeight = look.Bold ? FontWeight.SemiBold : FontWeight.Normal;
-            TextDecorations = look.Strike ? Avalonia.Media.TextDecorations.Strikethrough : null;
-            if (ToneBrush(look.Tone, this) is { } b) Foreground = b;
-            else ClearValue(ForegroundProperty);
-        }
-    }
 }
