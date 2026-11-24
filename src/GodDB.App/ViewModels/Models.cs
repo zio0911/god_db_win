@@ -113,6 +113,10 @@ public sealed record ImportRequest(string FileName, ConnectionBundle Bundle)
     public Guid Id { get; } = Guid.NewGuid();
     /// 접속별 안내 (DataGrip 에서 가져올 때)
     public Dictionary<Guid, IReadOnlyList<string>> Notes { get; init; } = [];
+    /// 지원하지 않아 건너뛴 접속 이름 (DBeaver 에서 가져올 때)
+    public IReadOnlyList<string> Skipped { get; init; } = [];
+    /// DBeaver 에 저장돼 있던 비밀번호 (접속 id → 비밀번호). 가져오기를 누르면 자격 증명 관리자에 넣는다
+    public Dictionary<Guid, string> PlainPasswords { get; init; } = [];
 }
 
 /// 적용하지 않은 결과 편집이 사라지는 일(탭 닫기 · 페이지 이동 · 결과 바꾸기 · 정렬) 전에 묻는다

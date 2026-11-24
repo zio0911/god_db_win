@@ -114,6 +114,7 @@ public partial class SidebarView : UserControl
         groupMenu.Items.Add(Item(Tr("새 그룹…"), () => app.GroupPrompt = new GroupPrompt(new GroupPromptAction.Move(p.Id))));
         if (p.Group.Length > 0) groupMenu.Items.Add(Item(Tr("그룹에서 빼기"), () => app.MoveProfile(p.Id, "")));
         items.Add(groupMenu);
+        items.Add(ReorderMenu(m => app.ReorderProfile(p.Id, m)));
         items.Add(new Separator());
         var delete = Item(Tr("삭제…"), () => app.Fire(() => ConfirmDeleteAsync(app, p)));
         delete.Classes.Add("danger");
@@ -140,7 +141,63 @@ public partial class SidebarView : UserControl
         rename.Click += (_, _) => vm.App.GroupPrompt = new GroupPrompt(new GroupPromptAction.Rename(group));
         var ungroup = new MenuItem { Header = Tr("그룹 풀기 (접속은 남아요)") };
         ungroup.Click += (_, _) => vm.App.RenameGroup(group, "");
-        new ContextMenu { ItemsSource = new List<Control> { rename, ungroup } }.Open(target);
+        var reorder = ReorderMenu(m => vm.App.ReorderGroup(group, m));
+        new ContextMenu { ItemsSource = new List<Control> { rename, ungroup, reorder } }.Open(target);
+    }
+
+    /// 우클릭 > 순서 바꾸기 (맨 위로 · 위로 · 아래로 · 맨 아래로)
+    public static MenuItem ReorderMenu(Action<ConnectionListOrder.Move> move)
+    {
+        var menu = new MenuItem { Header = Tr("순서 바꾸기") };
+        foreach (var (title, m) in new[] { (Tr("맨 위로"), ConnectionListOrder.Move.Top), (Tr("위로"), ConnectionListOrder.Move.Up),
+                                           (Tr("아래로"), ConnectionListOrder.Move.Down), (Tr("맨 아래로"), ConnectionListOrder.Move.Bottom) })
+        {
+            var item = new MenuItem { Header = title };
+            item.Click += (_, _) => move(m);
+            menu.Items.Add(item);
+        }
+        return menu;
+    }
+
+    // MARK: - 접속 정렬 메뉴 · 찾기 칸
+
+    /// "접속" 제목 오른쪽 정렬 메뉴: 정렬 방식 4가지 + 연결된 접속 먼저 (Mac ConnectionSortMenu)
+    private void OnSortMenu(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not Control target) return;
+        BuildSortMenu(vm.App).Open(target);
+    }
+
+    public static ContextMenu BuildSortMenu(AppState app)
+    {
+        var items = new List<Control>();
+        foreach (var s in ConnectionSorts.All)
+        {
+            var item = new MenuItem
+            {
+                Header = s.Title(),
+                ToggleType = MenuItemToggleType.Radio,
+                IsChecked = app.ConnectionSort == s,
+                GroupName = "connectionSort",
+            };
+            item.Click += (_, _) => app.ConnectionSort = s;
+            items.Add(item);
+        }
+        items.Add(new Separator());
+        var connected = new MenuItem { Header = Tr("연결된 접속 먼저"), ToggleType = MenuItemToggleType.CheckBox, IsChecked = app.ConnectedFirst };
+        connected.Click += (_, _) => app.ConnectedFirst = !app.ConnectedFirst;
+        items.Add(connected);
+        return new ContextMenu { ItemsSource = items };
+    }
+
+    private void OnConnectionSearchKey(object? sender, KeyEventArgs e)
+    {
+        // Esc 로 지움 (Mac onExitCommand)
+        if (e.Key == Key.Escape && Vm is { } vm && vm.ConnectionQuery.Length > 0)
+        {
+            vm.ConnectionQuery = "";
+            e.Handled = true;
+        }
     }
 
     // MARK: - 접속을 그룹 위로 끌어 놓기
@@ -167,6 +224,34 @@ public partial class SidebarView : UserControl
         await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move);
     }
 
+    private void OnGroupPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        _pressed = e;
+        _pressPoint = e.GetPosition(this);
+    }
+
+    /// 그룹 이름을 끌어 다른 그룹 이름 위에 놓으면 그 앞으로 (Mac .draggable(groupDragPrefix + group))
+    private async void OnGroupPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_pressed is not { } pressed || sender is not Control { Tag: string group }) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _pressed = null; return; }
+        var d = e.GetPosition(this) - _pressPoint;
+        if (Math.Abs(d.X) + Math.Abs(d.Y) < 6) return;
+        _pressed = null;
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.CreateText(ConnectionListKeys.GroupDragPrefix + group));
+        await DragDrop.DoDragDropAsync(pressed, data, DragDropEffects.Move);
+    }
+
+    /// 놓을 곳: 그룹 머리글 또는 접속 줄
+    private static Border? FindDropTarget(Visual v)
+    {
+        for (Visual? x = v; x != null; x = x.GetVisualParent())
+            if (x is Border b && (b.Classes.Contains("groupHeader") || b.Classes.Contains("profileRow"))) return b;
+        return null;
+    }
+
     private static Border? FindHeader(Visual v)
     {
         for (Visual? x = v; x != null; x = x.GetVisualParent())
@@ -178,7 +263,7 @@ public partial class SidebarView : UserControl
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        var header = e.Source is Visual v ? FindHeader(v) : null;
+        var header = e.Source is Visual v ? FindDropTarget(v) : null;
         if (_dropTarget != header)
         {
             _dropTarget?.Classes.Remove("dropTarget");
@@ -198,10 +283,25 @@ public partial class SidebarView : UserControl
     {
         _dropTarget?.Classes.Remove("dropTarget");
         _dropTarget = null;
-        if (Vm is not { } vm || e.Source is not Visual v || FindHeader(v) is not { Tag: string group }) return;
-        if (e.DataTransfer.TryGetText() is { } text)
+        if (Vm is not { } vm || e.Source is not Visual v || e.DataTransfer.TryGetText() is not { } text) return;
+        var target = FindDropTarget(v);
+        if (target is { Tag: string group } && target.Classes.Contains("groupHeader"))
+        {
+            // 그룹을 다른 그룹 이름 위에 놓으면 그 앞으로, 접속을 놓으면 그 그룹으로
             foreach (var line in text.Split('\n'))
-                if (Guid.TryParse(line.Trim(), out var id)) vm.App.MoveProfile(id, group);
+            {
+                var s = line.Trim();
+                if (s.StartsWith(ConnectionListKeys.GroupDragPrefix, StringComparison.Ordinal))
+                    vm.App.ReorderGroup(s[ConnectionListKeys.GroupDragPrefix.Length..], group);
+                else if (Guid.TryParse(s, out var id)) vm.App.MoveProfile(id, group);
+            }
+        }
+        else if (target?.DataContext is ProfileRowViewModel row)
+        {
+            // 다른 접속을 이 줄에 놓으면 이 접속 바로 앞으로 (이 접속의 그룹으로) 옮긴다
+            foreach (var line in text.Split('\n'))
+                if (Guid.TryParse(line.Trim(), out var id) && id != row.Profile.Id) vm.App.ReorderProfile(id, row.Profile.Id);
+        }
     }
 
     // MARK: - 테이블 트리

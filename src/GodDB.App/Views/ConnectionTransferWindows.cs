@@ -45,7 +45,7 @@ public sealed class ExportConnectionsWindow : Window
         {
             var cb = new CheckBox { IsChecked = true, Tag = p.Id };
             var label = Ui.HStack(8, new TextBlock { Text = p.Name },
-                Ui.Text($"{p.Kind.Title()} · {p.Host}:{p.Port.ToString(CultureInfo.InvariantCulture)}", "secondary"));
+                Ui.Text($"{p.TypeTitle} · {p.Host}:{p.Port.ToString(CultureInfo.InvariantCulture)}", "secondary"));
             if (p.Ssh != null) label.Children.Add(Ui.Text("SSH", "caption"));
             cb.Content = label;
             cb.IsCheckedChanged += (_, _) => { if (cb.IsChecked == true) Selected.Add(p.Id); else Selected.Remove(p.Id); Update(); };
@@ -147,14 +147,7 @@ public sealed class ImportConnectionsWindow : Window
         var list = new StackPanel { Spacing = 4 };
         foreach (var p in bundle.Profiles)
         {
-            var info = Ui.Stack(2, Ui.HStack(8, new TextBlock { Text = p.Name },
-                Ui.Text($"{p.Kind.Title()} · {p.Host}:{p.Port.ToString(CultureInfo.InvariantCulture)}{(p.Database.Length == 0 ? "" : " / " + p.Database)}", "secondary")));
-            foreach (var n in _request.Notes.TryGetValue(p.Id, out var notes) ? notes : [])
-            {
-                var t = Ui.Caption(n);
-                if (n.Contains("SSH")) t.Foreground = new SolidColorBrush(Color.Parse("#FF9500"));
-                info.Children.Add(t);
-            }
+            var info = ImportRowDetails(p, _request.Notes.TryGetValue(p.Id, out var notes) ? notes : []);
             var action = ConnectionTransfer.Action(p, app.Profiles) switch
             {
                 ImportAction.Replace r => Ui.Text(Tr("이미 있음 → 덮어씀 (%@)", r.ExistingName), "caption"),
@@ -174,6 +167,15 @@ public sealed class ImportConnectionsWindow : Window
         var body = new DockPanel();
         var top = Ui.Stack(6, Ui.Headline("⇩ " + Tr("접속 정보 가져오기")),
             Ui.Text($"{_request.FileName} · {bundle.App} · {bundle.ExportedAt.LocalDateTime:g}", "secondary"));
+        if (_request.Skipped.Count > 0)
+        {
+            // DBeaver 에서 가져올 때 지원하지 않아 건너뛴 접속 (SQLite 등)
+            var skipped = Ui.Text("⚠ " + Tr("지원하지 않는 접속 %@개는 건너뛰었어요: %@", _request.Skipped.Count, string.Join(", ", _request.Skipped)));
+            skipped.Foreground = new SolidColorBrush(Color.Parse("#FF9500"));
+            skipped.TextWrapping = TextWrapping.Wrap;
+            skipped.MaxLines = 3;
+            top.Children.Add(skipped);
+        }
         DockPanel.SetDock(top, Dock.Top);
         body.Children.Add(top);
         var bottom = Ui.Stack(8,
@@ -196,9 +198,34 @@ public sealed class ImportConnectionsWindow : Window
         }
     }
 
+    /// 가져오기 창의 접속 한 줄 (그룹 › 이름 · 주소, SSH, 안내) — Mac ImportRowDetails
+    internal static StackPanel ImportRowDetails(ConnectionProfile p, IReadOnlyList<string> notes)
+    {
+        var address = $"{p.TypeTitle} · {p.Host}:{p.Port.ToString(CultureInfo.InvariantCulture)}" + (p.Database.Length == 0 ? "" : " / " + p.Database);
+        var head = Ui.HStack(8);
+        if (p.Group.Length > 0) { var g = Ui.Text(p.Group + " ›", "secondary"); g.Opacity = 0.6; head.Children.Add(g); }
+        head.Children.Add(new TextBlock { Text = p.Name });
+        head.Children.Add(Ui.Text(address, "secondary"));
+        var info = Ui.Stack(2, head);
+        if (p.Ssh is { Host.Length: > 0 } ssh)
+        {
+            var user = ssh.Username.Length == 0 ? "" : ssh.Username + "@";
+            info.Children.Add(Ui.Caption("SSH " + user + ssh.Host + ":" + ssh.Port.ToString(CultureInfo.InvariantCulture)));
+        }
+        foreach (var n in notes)
+        {
+            var t = Ui.Caption(n);
+            // 비밀번호 안내는 보통 글자, 그 밖의 안내(사용자 이름 없음, SSH 방식 등)는 주황
+            if (n != Tr("비밀번호는 처음 연결할 때 입력해요.")) t.Foreground = new SolidColorBrush(Color.Parse("#FF9500"));
+            info.Children.Add(t);
+        }
+        return info;
+    }
+
     public void RunImport()
     {
-        var passwords = new Dictionary<Guid, string>();
+        // DBeaver 에서 읽은 비밀번호 (GodDB 파일이면 비어 있음)
+        var passwords = new Dictionary<Guid, string>(_request.PlainPasswords);
         if (_request.Bundle.HasPasswords && Passphrase.Text.Length > 0)
         {
             try { passwords = ConnectionTransfer.Passwords(_request.Bundle, Passphrase.Text); }

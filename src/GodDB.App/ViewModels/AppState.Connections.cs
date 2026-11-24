@@ -204,6 +204,8 @@ public sealed partial class AppState
                 c.Session = s;
                 c.State = ViewModels.ConnectionState.Connected;
             });
+            // PostgreSQL 로 저장한 접속이 실제로는 Redshift 면 종류 · 아이콘을 Redshift 로 (또는 그 반대) + 마지막 연결 시각
+            NoteConnected(id, profile.Kind == DatabaseKind.Postgres ? s.Dialect.IsRedshift() : null);
             Log(LogLevel.Success, LogSource.Connection, Tr("%@ 연결됨", profile.Name) + (profile.ReadOnly ? Tr(" (읽기전용)") : "")
                     + (ConnectedCount > 1 ? Tr(" · 열린 접속 %@개", ConnectedCount) : ""),
                 audit: new AuditRecord(AuditAction.Connect, profile.Name, profile.ReadOnly ? "성공 (읽기전용)" : "성공", target + " · " + note));
@@ -348,10 +350,11 @@ public sealed partial class AppState
 
     private static readonly FileFilter JsonFilter = new("JSON", ["*.json"]);
 
-    /// 파일을 골라 읽고 가져오기 창을 연다.
+    /// 파일을 골라 읽고 가져오기 창을 연다. GodDB 파일과 DBeaver(.dbp · data-sources.json) 를 모두 받는다.
     public async Task ChooseImportFileAsync()
     {
-        var files = await Dialogs.OpenFilesAsync(Tr("GodDB 에서 내보낸 접속 정보 파일(.json)을 고르세요."), [JsonFilter]);
+        var files = await Dialogs.OpenFilesAsync(Tr("GodDB 에서 내보낸 접속 정보 파일(.json) 또는 DBeaver 파일(.dbp · data-sources.json)을 고르세요."),
+            [ImportFilter]);
         if (files.Count == 0) return;
         await ImportFileAsync(files[0]);
     }
@@ -361,7 +364,13 @@ public sealed partial class AppState
     {
         try
         {
-            var bundle = ConnectionTransfer.Parse(await File.ReadAllBytesAsync(path));
+            var data = await File.ReadAllBytesAsync(path);
+            if (Path.GetExtension(path).Equals(".dbp", StringComparison.OrdinalIgnoreCase) || DBeaverImport.LooksLikeDBeaver(data))
+            {
+                ImportRequest = DBeaverRequest(path, await Task.Run(() => DBeaverImport.ParseFile(path)));
+                return;
+            }
+            var bundle = ConnectionTransfer.Parse(data);
             ImportRequest = new ImportRequest(Path.GetFileName(path), bundle);
         }
         catch (Exception e)
@@ -463,6 +472,7 @@ public sealed partial class AppState
             await ws.LoadTopologyAsync();
             RedisWorkspaces[id] = ws;
             UpdateConnection(id, c => c.State = ViewModels.ConnectionState.Connected);
+            NoteConnected(id);
             string version = "";
             try
             {

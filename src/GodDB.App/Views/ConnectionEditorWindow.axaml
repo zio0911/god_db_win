@@ -46,7 +46,7 @@
           <StackPanel>
             <Grid Classes="row" ColumnDefinitions="150,*">
               <TextBlock Classes="label" Text="{l:T DB 종류}"/>
-              <ComboBox Grid.Column="1" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch">
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Types}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch">
                 <ComboBox.ItemTemplate>
                   <DataTemplate><TextBlock Text="{Binding Converter={x:Static l:Conv.Title}}"/></DataTemplate>
                 </ComboBox.ItemTemplate>

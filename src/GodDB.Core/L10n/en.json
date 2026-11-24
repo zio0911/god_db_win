@@ -104,6 +104,7 @@
  "저장된 비밀번호가 없어요. 입력 후 저장하면 자격 증명 관리자에 보관돼요.": "No saved password. Enter one and save to keep it in Credential Manager.",
  "전체 실행": "Run All",
  "접속 목록 정렬": "Sort connections",
+ "접속 정보 파일": "Connection files",
  "접속 찾기 (이름 · 주소 · DB · 그룹)": "Find connection (name · host · DB · group)",
  "접속 편집": "Edit Connection",
  "지금": "now",

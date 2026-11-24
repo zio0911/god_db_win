@@ -12,6 +12,8 @@ public static class Conv
     public static readonly IValueConverter Title = new FuncValueConverter<object?, string>(v => v switch
     {
         DatabaseKind k => k.Title(),
+        ConnectionType t => t.Title(),
+        ConnectionSort cs => cs.Title(),
         RedisMode m => m.Title(),
         ConnectionEnvironment e => e.Title(),
         LogSource s => s.Title(),
