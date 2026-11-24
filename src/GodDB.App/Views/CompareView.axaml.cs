@@ -91,7 +91,7 @@ public partial class CompareView
         if (c.IsHeader)
             return new TextBlock { Text = c.Name, FontSize = 11, FontWeight = FontWeight.SemiBold, Classes = { "secondary" }, Margin = new Thickness(0, 4, 0, 0) };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        if (c.Kind is { } kind) row.Children.Add(new KindBadge { Kind = kind, Size = 14 });
+        if (c.Kind is { } kind) row.Children.Add(new KindBadge { Kind = kind, Size = 14, Redshift = c.Redshift });
         row.Children.Add(new TextBlock { Text = c.Label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
         return row;
     });

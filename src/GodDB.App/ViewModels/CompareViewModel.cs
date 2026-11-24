@@ -11,7 +11,8 @@ public sealed partial class CompareViewModel : ObservableObject
 
     /// 접속 고르기 항목 (Id 가 null 이면 "선택", IsHeader 면 고를 수 없는 그룹 이름 줄 — Mac Picker 의 Section)
     public sealed record Choice(Guid? Id, string Name, DatabaseKind? Kind = null,
-                                ConnectionEnvironment Environment = ConnectionEnvironment.None, string Group = "", bool IsHeader = false)
+                                ConnectionEnvironment Environment = ConnectionEnvironment.None, string Group = "", bool IsHeader = false,
+                                bool Redshift = false)
     {
         /// "이름 · 운영" (환경 표시 안 함이면 이름만) — Mac CompareView.label
         public string Label => Kind == null || Environment == ConnectionEnvironment.None ? Name : $"{Name} · {Environment.Title()}";
@@ -48,7 +49,7 @@ public sealed partial class CompareViewModel : ObservableObject
         var keepT = Target?.Id;
         var list = new List<Choice> { new(null, Tr("선택")) };
         var sql = App.Profiles.Where(p => p.Kind.IsSql()).ToList();
-        Choice Item(ConnectionProfile p) => new(p.Id, p.Name, p.Kind, p.Environment, p.Group);
+        Choice Item(ConnectionProfile p) => new(p.Id, p.Name, p.Kind, p.Environment, p.Group, Redshift: p.Redshift);
         // 그룹 없는 접속 먼저, 그다음 그룹별 (사이드바와 같은 순서 — Mac #101)
         list.AddRange(sql.Where(p => p.Group.Length == 0).Select(Item));
         foreach (var g in App.ProfileGroups.Where(g => sql.Any(p => p.Group == g)))
